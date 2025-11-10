@@ -212,6 +212,11 @@
             // 4. Setup inicial
             setupWaveform();
             resizeRenderer();
+            
+            // --- INICIO DE CAMBIO ---
+            // Renderizar la escena una vez al inicio para mostrar el estado inactivo
+            renderer.render(scene, camera);
+            // --- FIN DE CAMBIO ---
         }
 
         // --- Lógica de Audio ---
@@ -401,6 +406,32 @@
             const positions = new Float32Array((bufferLength + 1) * 3); // +1 para cerrar el loop
             const colors = new Float32Array((bufferLength + 1) * 3);
 
+            // --- INICIO DE CAMBIO ---
+            // Dibujar el estado inactivo (un círculo base)
+            const baseRadius = 150;
+            const color = new THREE.Color(0x4299e1); // Un color azul base
+
+            for (let i = 0; i < bufferLength; i++) {
+                const angle = (i / bufferLength) * Math.PI * 2;
+                positions[i * 3] = Math.cos(angle) * baseRadius;
+                positions[i * 3 + 1] = Math.sin(angle) * baseRadius;
+                positions[i * 3 + 2] = 0;
+
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+            
+            // Cerrar el loop
+            positions[bufferLength * 3] = positions[0];
+            positions[bufferLength * 3 + 1] = positions[1];
+            positions[bufferLength * 3 + 2] = positions[2];
+            
+            colors[bufferLength * 3] = colors[0];
+            colors[bufferLength * 3 + 1] = colors[1];
+            colors[bufferLength * 3 + 2] = colors[2];
+            // --- FIN DE CAMBIO ---
+
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
@@ -466,20 +497,40 @@
             const totalWidth = 400; // Ancho total del visualizador
             const barWidth = totalWidth / bufferLength;
 
+            // --- INICIO DE CAMBIO ---
+            const baseHeight = 1;
+            const color = new THREE.Color(0x4299e1); // Un color azul base
+            const colors = new Float32Array(bufferLength * 3);
+            // --- FIN DE CAMBIO ---
+
             for (let i = 0; i < bufferLength; i++) {
-                dummy.position.set((i - bufferLength / 2) * barWidth, 0, 0);
-                dummy.scale.set(barWidth * 0.8, 1, 1); // 0.8 para dar espacio
+                // --- INICIO DE CAMBIO ---
+                // Posicionar la barra base
+                dummy.position.set((i - bufferLength / 2) * barWidth, baseHeight / 2, 0); // Posicionar desde la base
+                dummy.scale.set(barWidth * 0.8, baseHeight, 1); // 0.8 para dar espacio
                 dummy.updateMatrix();
                 mesh.setMatrixAt(i, dummy.matrix);
+
+                // Asignar el color base
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+                // --- FIN DE CAMBIO ---
             }
             mesh.instanceMatrix.needsUpdate = true;
             
             // Habilitar colores por instancia
-            mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(bufferLength * 3), 3);
+            // --- INICIO DE CAMBIO ---
+            // Cargar los colores base en el buffer
+            mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
+            // --- FIN DE CAMBIO ---
             barGeometry.setAttribute('instanceColor', mesh.instanceColor);
 
             mesh.name = "bar";
+            // --- INICIO DE CAMBIO ---
+            // BUG CORREGIDO: Devolvía 'line' en lugar de 'mesh'
             return mesh;
+            // --- FIN DE CAMBIO ---
         }
 
         function updateBarWaveform(data, time) {
