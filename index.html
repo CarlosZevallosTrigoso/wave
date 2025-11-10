@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Waveform con Three.js</title>
+    <!-- Carga de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carga de Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        /* Fuente Inter de Tailwind */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Estilo para el timeline */
+        input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #4a5568; /* gray-700 */
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        input[type=range]:hover {
+            opacity: 1;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #4299e1; /* blue-500 */
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        input[type=range]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #4299e1; /* blue-500 */
+            border-radius: 50%;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-4xl bg-gray-800 rounded-lg shadow-xl p-6">
+        <h1 class="text-3xl font-bold text-center mb-6">Generador de Waveform</h1>
+
+        <!-- Controles Principales -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <!-- 1. Carga de Archivo -->
+            <div>
+                <label for="file-input" class="block text-sm font-medium text-gray-300 mb-2">1. Cargar MP3</label>
+                <input id="file-input" type="file" accept="audio/mp3" class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"/>
+            </div>
+            
+            <!-- 2. Estilo de Waveform -->
+            <div>
+                <label for="waveform-select" class="block text-sm font-medium text-gray-300 mb-2">2. Estilo de Waveform</label>
+                <select id="waveform-select" class="w-full bg-gray-700 border-gray-600 rounded-lg p-2.5 text-white focus:ring-blue-500 focus:border-blue-500">
+                    <option value="circular">Circular Multicolor</option>
+                    <option value="bar">Barra Horizontal</option>
+                </select>
+            </div>
+
+            <!-- 3. Tamaño de Canvas -->
+            <div>
+                <label for="size-select" class="block text-sm font-medium text-gray-300 mb-2">3. Tamaño de Canvas</label>
+                <select id="size-select" class="w-full bg-gray-700 border-gray-600 rounded-lg p-2.5 text-white focus:ring-blue-500 focus:border-blue-500">
+                    <option value="1080x1080">1080x1080 (Cuadrado)</option>
+                    <option value="1080x1350">1080x1350 (Vertical)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Contenedor del Canvas -->
+        <div id="canvas-container" class="w-full flex justify-center items-center bg-black rounded-lg overflow-hidden mb-4" style="aspect-ratio: 1/1;">
+            <!-- El canvas de Three.js se insertará aquí -->
+        </div>
+
+        <!-- Controles de Reproducción y Grabación -->
+        <div class="space-y-4">
+            <!-- Play / Pause -->
+            <div class="flex items-center space-x-4">
+                <button id="play-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center w-24" disabled>
+                    <svg id="play-icon" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                    <svg id="pause-icon" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h1a1 1 0 001-1V8a1 1 0 00-1-1H8zm5 0a1 1 0 00-1 1v4a1 1 0 001 1h1a1 1 0 001-1V8a1 1 0 00-1-1h-1z" clip-rule="evenodd"></path></svg>
+                    <span id="play-text" class="ml-2">Play</span>
+                </button>
+                
+                <!-- Botón de Grabar -->
+                <button id="record-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center w-36" disabled>
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd"></path></svg>
+                    <span id="record-text" class="ml-2">Grabar</span>
+                </button>
+                
+                <!-- Feedback de Grabación -->
+                <span id="recording-status" class="text-red-500 font-medium hidden flex items-center">
+                    <span class="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></span>
+                    Grabando...
+                </span>
+            </div>
+            
+            <!-- Timeline -->
+            <div class="flex items-center space-x-3">
+                <span id="current-time" class="text-sm text-gray-400 w-12 text-center">0:00</span>
+                <input id="timeline" type="range" value="0" min="0" max="100" step="0.1" class="w-full" disabled>
+                <span id="duration" class="text-sm text-gray-400 w-12 text-center">0:00</span>
+            </div>
+        </div>
+
+        <!-- Enlace de Descarga -->
+        <div id="download-area" class="mt-6 text-center hidden">
+            <a id="download-link" class="text-blue-400 hover:text-blue-300 font-medium">¡Video listo! Haz clic para descargar.</a>
+        </div>
+
+    </div>
+
+    <!-- Elemento de Audio (oculto) -->
+    <audio id="audio-element"></audio>
+
+    <script type="module">
+        // --- Variables Globales ---
+        let scene, camera, renderer, clock;
+        let audioContext, analyser, audioSource, dataArray;
+        let mediaRecorder, recordedChunks, streamDestination;
+
+        let currentWaveform = null;
+        let isPlaying = false;
+        let isRecording = false;
+        let fftSize = 512; // Frecuencia de muestreo (potencia de 2)
+        
+        // --- Elementos del DOM ---
+        const fileInput = document.getElementById('file-input');
+        const waveformSelect = document.getElementById('waveform-select');
+        const sizeSelect = document.getElementById('size-select');
+        const canvasContainer = document.getElementById('canvas-container');
+        
+        const playButton = document.getElementById('play-button');
+        const playText = document.getElementById('play-text');
+        const playIcon = document.getElementById('play-icon');
+        const pauseIcon = document.getElementById('pause-icon');
+        
+        const recordButton = document.getElementById('record-button');
+        const recordText = document.getElementById('record-text');
+        const recordingStatus = document.getElementById('recording-status');
+        
+        const timeline = document.getElementById('timeline');
+        const currentTimeEl = document.getElementById('current-time');
+        const durationEl = document.getElementById('duration');
+        
+        const downloadArea = document.getElementById('download-area');
+        const downloadLink = document.getElementById('download-link');
+        
+        const audioElement = document.getElementById('audio-element');
+
+        // --- Inicialización ---
+        
+        function init() {
+            // 1. Setup Three.js
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            clock = new THREE.Clock();
+
+            // Usamos cámara ortográfica para un look 2D/minimalista
+            const w = 1080;
+            const h = 1080;
+            camera = new THREE.OrthographicCamera(-w/2, w/2, h/2, -h/2, 1, 1000);
+            camera.position.z = 10;
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+            renderer.setSize(w, h);
+            canvasContainer.appendChild(renderer.domElement);
+            renderer.domElement.style.width = '100%';
+            renderer.domElement.style.height = 'auto';
+            
+            // 2. Setup Audio
+            audioContext = new AudioContext();
+
+            // 3. Setup Event Listeners
+            fileInput.addEventListener('change', loadAudio);
+            playButton.addEventListener('click', togglePlay);
+            recordButton.addEventListener('click', startRecording);
+            waveformSelect.addEventListener('change', setupWaveform);
+            sizeSelect.addEventListener('change', resizeRenderer);
+            timeline.addEventListener('input', seekAudio);
+            
+            audioElement.addEventListener('timeupdate', updateTimeline);
+            audioElement.addEventListener('loadedmetadata', () => {
+                timeline.max = audioElement.duration;
+                durationEl.textContent = formatTime(audioElement.duration);
+            });
+            audioElement.addEventListener('ended', onAudioEnded);
+            
+            // 4. Setup inicial
+            setupWaveform();
+            resizeRenderer();
+        }
+
+        // --- Lógica de Audio ---
+
+        function loadAudio(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const fileURL = URL.createObjectURL(file);
+            audioElement.src = fileURL;
+
+            if (!audioSource) {
+                // Conectar el audio al Analyser y al destino
+                audioSource = audioContext.createMediaElementSource(audioElement);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = fftSize;
+                
+                // Destino para la grabación (para capturar el audio)
+                streamDestination = audioContext.createMediaStreamDestination();
+
+                // Conectar todo
+                audioSource.connect(analyser);
+                audioSource.connect(streamDestination); // Conectar a la grabación
+                analyser.connect(audioContext.destination); // Conectar a los altavoces
+
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+            }
+            
+            // Habilitar controles
+            playButton.disabled = false;
+            recordButton.disabled = false;
+            timeline.disabled = false;
+            downloadArea.classList.add('hidden');
+        }
+
+        function togglePlay() {
+            if (isRecording) return; // No permitir pausa durante la grabación
+
+            audioContext.resume(); // Importante para navegadores
+
+            if (isPlaying) {
+                audioElement.pause();
+                playText.textContent = 'Play';
+                playIcon.classList.remove('hidden');
+                pauseIcon.classList.add('hidden');
+            } else {
+                audioElement.play();
+                playText.textContent = 'Pause';
+                playIcon.classList.add('hidden');
+                pauseIcon.classList.remove('hidden');
+                animate(); // Iniciar el loop de animación
+            }
+            isPlaying = !isPlaying;
+        }
+
+        function seekAudio() {
+            audioElement.currentTime = timeline.value;
+        }
+
+        function updateTimeline() {
+            timeline.value = audioElement.currentTime;
+            currentTimeEl.textContent = formatTime(audioElement.currentTime);
+        }
+
+        function onAudioEnded() {
+            isPlaying = false;
+            playText.textContent = 'Play';
+            playIcon.classList.remove('hidden');
+            pauseIcon.classList.add('hidden');
+            timeline.value = 0;
+            audioElement.currentTime = 0;
+            
+            if (isRecording) {
+                stopRecording();
+            }
+        }
+
+        // --- Lógica de Grabación ---
+
+        function startRecording() {
+            if (isRecording || !audioSource) return;
+            
+            isRecording = true;
+            recordedChunks = [];
+            
+            // 1. Obtener stream de video del canvas
+            const videoStream = renderer.domElement.captureStream(30); // 30 fps
+            
+            // 2. Obtener stream de audio del Web Audio API
+            const audioStream = streamDestination.stream;
+
+            // 3. Combinar streams
+            const combinedStream = new MediaStream([
+                ...videoStream.getVideoTracks(),
+                ...audioStream.getAudioTracks()
+            ]);
+
+            // 4. Iniciar MediaRecorder
+            try {
+                mediaRecorder = new MediaRecorder(combinedStream, {
+                    mimeType: 'video/webm; codecs=vp9,opus'
+                });
+            } catch (e) {
+                console.error("Error al crear MediaRecorder:", e);
+                isRecording = false;
+                return;
+            }
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                isRecording = false;
+                recordingStatus.classList.add('hidden');
+                recordButton.disabled = false;
+                playButton.disabled = false;
+                recordText.textContent = 'Grabar';
+                
+                downloadVideo();
+            };
+
+            mediaRecorder.start();
+            
+            // Actualizar UI
+            recordingStatus.classList.remove('hidden');
+            recordButton.disabled = true;
+            playButton.disabled = true; // Deshabilitar pausa
+            recordText.textContent = 'Grabando';
+            
+            // Iniciar reproducción si no está sonando
+            if (!isPlaying) {
+                audioElement.currentTime = 0;
+                audioElement.play();
+                isPlaying = true; // Se setea en onAudioEnded
+                animate();
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        }
+
+        function downloadVideo() {
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            
+            downloadLink.href = url;
+            downloadLink.download = `waveform_${waveformSelect.value}_${Date.now()}.webm`;
+            downloadArea.classList.remove('hidden');
+        }
+
+        // --- Lógica de Three.js (Waveforms) ---
+
+        function setupWaveform() {
+            if (currentWaveform) {
+                scene.remove(currentWaveform);
+                // Limpiar geometría/material si es necesario
+                if (currentWaveform.geometry) currentWaveform.geometry.dispose();
+                if (currentWaveform.material) currentWaveform.material.dispose();
+            }
+
+            const type = waveformSelect.value;
+            if (type === 'circular') {
+                currentWaveform = createCircularWaveform();
+            } else if (type === 'bar') {
+                currentWaveform = createBarWaveform();
+            }
+            scene.add(currentWaveform);
+        }
+
+        // --- Waveform 1: Circular Multicolor ---
+        function createCircularWaveform() {
+            const bufferLength = analyser.frequencyBinCount;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array((bufferLength + 1) * 3); // +1 para cerrar el loop
+            const colors = new Float32Array((bufferLength + 1) * 3);
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.LineBasicMaterial({ vertexColors: true });
+            
+            // Usamos LineLoop para conectar el último punto con el primero
+            const line = new THREE.LineLoop(geometry, material);
+            line.name = "circular";
+            return line;
+        }
+
+        function updateCircularWaveform(data, time) {
+            const positions = currentWaveform.geometry.attributes.position.array;
+            const colors = currentWaveform.geometry.attributes.color.array;
+            const bufferLength = analyser.frequencyBinCount;
+            const color = new THREE.Color();
+            
+            const baseRadius = 150; // Radio base minimalista
+            const modulation = 100; // Cuánto reacciona
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = data[i] / 255.0; // Valor 0.0 a 1.0
+                const radius = baseRadius + v * modulation;
+                const angle = (i / bufferLength) * Math.PI * 2;
+
+                positions[i * 3] = Math.cos(angle) * radius;
+                positions[i * 3 + 1] = Math.sin(angle) * radius;
+                positions[i * 3 + 2] = 0;
+
+                // Color psicodélico/multicolor que rota con el tiempo
+                const hue = (i / bufferLength + time * 0.1) % 1.0;
+                color.setHSL(hue, 1.0, 0.5 + v * 0.5); // Más brillante con más volumen
+                
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+            
+            // Cerrar el loop
+            positions[bufferLength * 3] = positions[0];
+            positions[bufferLength * 3 + 1] = positions[1];
+            positions[bufferLength * 3 + 2] = positions[2];
+            
+            colors[bufferLength * 3] = colors[0];
+            colors[bufferLength * 3 + 1] = colors[1];
+            colors[bufferLength * 3 + 2] = colors[2];
+
+            currentWaveform.geometry.attributes.position.needsUpdate = true;
+            currentWaveform.geometry.attributes.color.needsUpdate = true;
+        }
+
+        // --- Waveform 2: Barra Horizontal ---
+        function createBarWaveform() {
+            // Usamos InstancedMesh para alto rendimiento
+            const bufferLength = analyser.frequencyBinCount;
+            const barGeometry = new THREE.BoxGeometry(1, 1, 1); // Geometría base
+            const barMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff }); // El color se sobreescribirá por instancia
+            
+            const mesh = new THREE.InstancedMesh(barGeometry, barMaterial, bufferLength);
+            mesh.instanceMatrixAutoUpdate = false;
+            
+            const dummy = new THREE.Object3D();
+            const totalWidth = 400; // Ancho total del visualizador
+            const barWidth = totalWidth / bufferLength;
+
+            for (let i = 0; i < bufferLength; i++) {
+                dummy.position.set((i - bufferLength / 2) * barWidth, 0, 0);
+                dummy.scale.set(barWidth * 0.8, 1, 1); // 0.8 para dar espacio
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+            
+            // Habilitar colores por instancia
+            mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(bufferLength * 3), 3);
+            barGeometry.setAttribute('instanceColor', mesh.instanceColor);
+
+            mesh.name = "bar";
+            return mesh;
+        }
+
+        function updateBarWaveform(data, time) {
+            const bufferLength = analyser.frequencyBinCount;
+            const dummy = new THREE.Object3D();
+            const color = new THREE.Color();
+            const totalWidth = 400;
+            const barWidth = totalWidth / bufferLength;
+            
+            const maxHeight = 200; // Altura máxima de la barra
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = data[i] / 255.0; // 0.0 a 1.0
+                const height = Math.max(1, v * maxHeight); // Altura mínima de 1
+                
+                dummy.position.set(
+                    (i - bufferLength / 2) * barWidth, 
+                    height / 2, // Posicionar desde la base (0)
+                    0
+                );
+                dummy.scale.set(barWidth * 0.8, height, 1);
+                dummy.updateMatrix();
+                currentWaveform.setMatrixAt(i, dummy.matrix);
+
+                // Color degradado brillante
+                const hue = (i / bufferLength);
+                color.setHSL(hue, 1.0, 0.5 + v * 0.5);
+                currentWaveform.instanceColor.setXYZ(i, color.r, color.g, color.b);
+            }
+            currentWaveform.instanceMatrix.needsUpdate = true;
+            currentWaveform.instanceColor.needsUpdate = true;
+        }
+
+
+        // --- Loop de Animación ---
+        
+        function animate() {
+            if (!isPlaying) return; // Detener el loop si no está sonando
+
+            requestAnimationFrame(animate);
+
+            // Obtener datos del audio
+            analyser.getByteFrequencyData(dataArray);
+            const time = clock.getElapsedTime();
+
+            // Actualizar el waveform actual
+            const type = waveformSelect.value;
+            if (type === 'circular') {
+                updateCircularWaveform(dataArray, time);
+            } else if (type === 'bar') {
+                updateBarWaveform(dataArray, time);
+            }
+
+            // Renderizar la escena
+            renderer.render(scene, camera);
+        }
+
+        // --- Utilidades ---
+
+        function resizeRenderer() {
+            const size = sizeSelect.value;
+            let width, height;
+
+            if (size === '1080x1080') {
+                width = 1080;
+                height = 1080;
+                canvasContainer.style.aspectRatio = '1/1';
+            } else { // 1080x1350
+                width = 1080;
+                height = 1350;
+                canvasContainer.style.aspectRatio = '1080/1350';
+            }
+
+            // Actualizar cámara ortográfica
+            camera.left = -width / 2;
+            camera.right = width / 2;
+            camera.top = height / 2;
+            camera.bottom = -height / 2;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(width, height);
+        }
+        
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // Iniciar la aplicación
+        init();
+    </script>
+</body>
+</html>
