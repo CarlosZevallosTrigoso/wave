@@ -182,6 +182,18 @@
             // 2. Setup Audio
             audioContext = new AudioContext();
 
+            // --- INICIO DE CAMBIOS ---
+            // Crear el analyser y el stream destination aquí
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = fftSize;
+            
+            // Destino para la grabación (para capturar el audio)
+            streamDestination = audioContext.createMediaStreamDestination();
+
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+            // --- FIN DE CAMBIOS ---
+
             // 3. Setup Event Listeners
             fileInput.addEventListener('change', loadAudio);
             playButton.addEventListener('click', togglePlay);
@@ -214,19 +226,25 @@
             if (!audioSource) {
                 // Conectar el audio al Analyser y al destino
                 audioSource = audioContext.createMediaElementSource(audioElement);
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = fftSize;
+                
+                // --- INICIO DE CAMBIOS ---
+                // El analyser y streamDestination ya existen, solo conectamos.
+                // analyser = audioContext.createAnalyser(); // MOVIDO a init
+                // analyser.fftSize = fftSize; // MOVIDO a init
                 
                 // Destino para la grabación (para capturar el audio)
-                streamDestination = audioContext.createMediaStreamDestination();
+                // streamDestination = audioContext.createMediaStreamDestination(); // MOVIDO a init
+                // --- FIN DE CAMBIOS ---
 
                 // Conectar todo
                 audioSource.connect(analyser);
                 audioSource.connect(streamDestination); // Conectar a la grabación
                 analyser.connect(audioContext.destination); // Conectar a los altavoces
 
-                const bufferLength = analyser.frequencyBinCount;
-                dataArray = new Uint8Array(bufferLength);
+                // --- INICIO DE CAMBIOS ---
+                // const bufferLength = analyser.frequencyBinCount; // MOVIDO a init
+                // dataArray = new Uint8Array(bufferLength); // MOVIDO a init
+                // --- FIN DE CAMBIOS ---
             }
             
             // Habilitar controles
