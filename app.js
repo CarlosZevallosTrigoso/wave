@@ -232,8 +232,14 @@ class AudioVisualizer {
             case 'particlemorph':
                 this.currentWaveform = new ParticleMorphWaveform(this.scene, this.analyser);
                 break;
-            case 'echoripples':
-                this.currentWaveform = new EchoRipplesWaveform(this.scene, this.analyser);
+            case 'gradientorb':
+                this.currentWaveform = new GradientOrbWaveform(this.scene, this.analyser);
+                break;
+            case 'multiwave':
+                this.currentWaveform = new MultiWaveWaveform(this.scene, this.analyser);
+                break;
+            case 'particlesphere':
+                this.currentWaveform = new ParticleSphereWaveform(this.scene, this.analyser);
                 break;
         }
         
@@ -258,19 +264,24 @@ class AudioVisualizer {
             if (typeof value === 'number') {
                 const input = document.createElement('input');
                 input.type = 'range';
-                input.min = key === 'particleCount' ? 1000 : 0.1;
+                input.min = key === 'particleCount' ? 1000 : 
+                            key === 'segments' ? 32 : 
+                            key === 'waveCount' ? 3 : 0.1;
                 input.max = key === 'particleCount' ? 10000 : 
+                            key === 'segments' ? 256 : 
+                            key === 'waveCount' ? 20 :
                             key.includes('radius') || key.includes('size') ? 3 : 10;
-                input.step = key === 'particleCount' ? 100 : 0.1;
+                input.step = key === 'particleCount' ? 100 : 
+                             key === 'segments' || key === 'waveCount' ? 1 : 0.1;
                 input.value = value;
                 
                 const valueDisplay = document.createElement('span');
-                valueDisplay.textContent = key === 'particleCount' ? value : value.toFixed(1);
+                valueDisplay.textContent = (key === 'particleCount' || key === 'segments' || key === 'waveCount') ? value : value.toFixed(1);
                 
                 input.addEventListener('input', (e) => {
                     const val = parseFloat(e.target.value);
                     this.currentWaveform.config[key] = val;
-                    valueDisplay.textContent = key === 'particleCount' ? val : val.toFixed(1);
+                    valueDisplay.textContent = (key === 'particleCount' || key === 'segments' || key === 'waveCount') ? val : val.toFixed(1);
                 });
                 
                 item.appendChild(input);
@@ -546,45 +557,171 @@ class ParticleMorphWaveform {
     }
 }
 
-// Echo Ripples Waveform - CORREGIDO para evitar NaN
-class EchoRipplesWaveform {
+// Gradient Orb Waveform - Esfera 2D con degradado y dither
+class GradientOrbWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
         this.analyser = analyser;
-        this.ripples = [];
+        this.mesh = null;
         this.time = 0;
         
         this.config = {
-            rippleCount: 12,
-            maxRadius: 2.0,
-            echoIntensity: 1.5,
-            speed: 1.0,
-            lineWidth: 2.0
+            segments: 128,
+            radius: 1.5,
+            waveIntensity: 0.8,
+            ditherAmount: 0.3,
+            rotationSpeed: 0.5
         };
         
         this.create();
     }
     
     create() {
-        for (let i = 0; i < this.config.rippleCount; i++) {
-            const segments = 128;
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array((segments + 1) * 3);
-            const colors = new Float32Array((segments + 1) * 3);
-            
-            for (let j = 0; j <= segments; j++) {
-                const angle = (j / segments) * Math.PI * 2;
-                const radius = 0.1;
+        const geometry = new THREE.CircleGeometry(this.config.radius, this.config.segments);
+        
+        // Shader personalizado para gradiente con dither
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0 },
+                amplitude: { value: 0 },
+                ditherAmount: { value: this.config.ditherAmount }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vPosition;
                 
-                positions[j * 3] = Math.cos(angle) * radius;
-                positions[j * 3 + 1] = Math.sin(angle) * radius;
+                void main() {
+                    vUv = uv;
+                    vPosition = position;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform float amplitude;
+                uniform float ditherAmount;
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                
+                // Función de dither simple
+                float dither(vec2 uv) {
+                    return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+                }
+                
+                void main() {
+                    vec2 center = vec2(0.5, 0.5);
+                    float dist = distance(vUv, center);
+                    
+                    // Gradiente radial con múltiples anillos
+                    float rings = sin(dist * 12.0 - time * 2.0 + amplitude * 3.0) * 0.5 + 0.5;
+                    
+                    // Colores del gradiente
+                    vec3 color1 = vec3(0.1, 0.3, 0.8); // Azul
+                    vec3 color2 = vec3(0.9, 0.9, 0.95); // Blanco/gris claro
+                    vec3 color3 = vec3(1.0, 0.4, 0.2); // Naranja/rojo
+                    vec3 color4 = vec3(0.15, 0.25, 0.15); // Verde oscuro (fondo)
+                    
+                    // Mezclar colores basado en distancia
+                    vec3 color;
+                    if (dist < 0.3) {
+                        color = mix(color1, color2, dist / 0.3);
+                    } else if (dist < 0.6) {
+                        color = mix(color2, color3, (dist - 0.3) / 0.3);
+                    } else {
+                        color = mix(color3, color4, (dist - 0.6) / 0.4);
+                    }
+                    
+                    // Aplicar dither
+                    float ditherValue = dither(vUv * 200.0) * ditherAmount;
+                    color += vec3(ditherValue);
+                    
+                    // Fade out en los bordes
+                    float alpha = 1.0 - smoothstep(0.85, 1.0, dist);
+                    
+                    // Aplicar rings para efecto de ondas
+                    color *= rings * 0.3 + 0.7;
+                    
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+        
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.scene.add(this.mesh);
+        this.scene.background = new THREE.Color(0x1a2a1a);
+    }
+    
+    update(dataArray) {
+        if (!dataArray || dataArray.length === 0) return;
+        
+        this.time += 0.02 * this.config.rotationSpeed;
+        
+        const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
+        const bassData = dataArray.slice(0, Math.floor(dataArray.length * 0.2));
+        const bassAvg = bassData.reduce((a, b) => a + b, 0) / bassData.length / 255;
+        
+        // Actualizar uniforms del shader
+        this.mesh.material.uniforms.time.value = this.time;
+        this.mesh.material.uniforms.amplitude.value = avgAmplitude * this.config.waveIntensity;
+        this.mesh.material.uniforms.ditherAmount.value = this.config.ditherAmount;
+        
+        // Pulsar el tamaño con el bass
+        const scale = 1.0 + bassAvg * 0.2;
+        this.mesh.scale.set(scale, scale, scale);
+        
+        // Rotación suave
+        this.mesh.rotation.z = this.time * 0.1;
+    }
+    
+    dispose() {
+        if (this.mesh) {
+            this.mesh.geometry.dispose();
+            this.mesh.material.dispose();
+            this.scene.remove(this.mesh);
+        }
+        this.scene.background = new THREE.Color(0x000000);
+    }
+}
+
+// Multi Wave Waveform - Múltiples líneas ondulantes
+class MultiWaveWaveform {
+    constructor(scene, analyser) {
+        this.scene = scene;
+        this.analyser = analyser;
+        this.waves = [];
+        this.time = 0;
+        
+        this.config = {
+            waveCount: 12,
+            segments: 128,
+            waveIntensity: 1.5,
+            spacing: 0.15,
+            speed: 1.0
+        };
+        
+        this.create();
+    }
+    
+    create() {
+        for (let i = 0; i < this.config.waveCount; i++) {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(this.config.segments * 3);
+            const colors = new Float32Array(this.config.segments * 3);
+            
+            const yPos = (i - this.config.waveCount / 2) * this.config.spacing;
+            
+            for (let j = 0; j < this.config.segments; j++) {
+                const x = (j / (this.config.segments - 1)) * 4 - 2;
+                positions[j * 3] = x;
+                positions[j * 3 + 1] = yPos;
                 positions[j * 3 + 2] = 0;
                 
-                const hue = i / this.config.rippleCount;
-                const color = new THREE.Color().setHSL(hue, 1, 0.5);
-                colors[j * 3] = color.r;
-                colors[j * 3 + 1] = color.g;
-                colors[j * 3 + 2] = color.b;
+                // Color blanco para todas las líneas
+                colors[j * 3] = 1.0;
+                colors[j * 3 + 1] = 1.0;
+                colors[j * 3 + 2] = 1.0;
             }
             
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -594,18 +731,18 @@ class EchoRipplesWaveform {
                 vertexColors: true,
                 transparent: true,
                 opacity: 0.8,
-                linewidth: this.config.lineWidth,
-                blending: THREE.AdditiveBlending
+                linewidth: 2
             });
             
-            const ripple = new THREE.LineLoop(geometry, material);
-            ripple.userData = { 
+            const wave = new THREE.Line(geometry, material);
+            wave.userData = { 
                 index: i,
-                phase: (i / this.config.rippleCount) * Math.PI * 2
+                baseY: yPos,
+                originalPositions: new Float32Array(positions)
             };
             
-            this.ripples.push(ripple);
-            this.scene.add(ripple);
+            this.waves.push(wave);
+            this.scene.add(wave);
         }
     }
     
@@ -614,68 +751,149 @@ class EchoRipplesWaveform {
         
         this.time += 0.02 * this.config.speed;
         
-        const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
-        const bassData = dataArray.slice(0, Math.floor(dataArray.length * 0.2));
-        const bassAvg = bassData.reduce((a, b) => a + b, 0) / bassData.length / 255;
-        
-        this.ripples.forEach((ripple, idx) => {
-            const positions = ripple.geometry.attributes.position.array;
-            const colors = ripple.geometry.attributes.color.array;
-            const segments = Math.floor(positions.length / 3) - 1;
+        this.waves.forEach((wave, waveIdx) => {
+            const positions = wave.geometry.attributes.position.array;
+            const originalPositions = wave.userData.originalPositions;
             
-            const progress = ((this.time + ripple.userData.phase) % (Math.PI * 2)) / (Math.PI * 2);
-            const radius = progress * this.config.maxRadius;
-            
-            const opacity = 1 - progress;
-            ripple.material.opacity = Math.max(0, Math.min(1, opacity * 0.9));
-            
-            for (let i = 0; i <= segments; i++) {
-                const angle = (i / segments) * Math.PI * 2;
+            for (let i = 0; i < this.config.segments; i++) {
+                const x = originalPositions[i * 3];
+                const baseY = wave.userData.baseY;
                 
-                const dataIdx = Math.floor((i / segments) * (dataArray.length - 1));
-                const amplitude = (dataArray[dataIdx] / 255) * this.config.echoIntensity;
+                // Mapear posición X al array de datos de audio
+                const dataIdx = Math.floor((i / this.config.segments) * dataArray.length);
+                const amplitude = dataArray[dataIdx] / 255;
                 
-                const distortion = 
-                    Math.sin(angle * 3 - this.time * 3) * amplitude * 0.2 +
-                    Math.sin(angle * 5 + this.time * 2) * amplitude * 0.15 +
-                    bassAvg * 0.3;
+                // Crear ondas con diferentes fases
+                const wave1 = Math.sin(x * 2 + this.time + waveIdx * 0.5) * amplitude;
+                const wave2 = Math.sin(x * 3 - this.time * 0.7 + waveIdx * 0.3) * amplitude * 0.5;
+                const wave3 = Math.sin(x * 5 + this.time * 1.3 + waveIdx * 0.2) * amplitude * 0.3;
                 
-                const finalRadius = Math.max(0.01, radius + distortion);
+                const displacement = (wave1 + wave2 + wave3) * this.config.waveIntensity * 0.3;
                 
-                const x = Math.cos(angle) * finalRadius;
-                const y = Math.sin(angle) * finalRadius;
-                
-                // Validar que no sean NaN
-                positions[i * 3] = isNaN(x) ? 0 : x;
-                positions[i * 3 + 1] = isNaN(y) ? 0 : y;
-                positions[i * 3 + 2] = 0;
-                
-                const hue = (idx / this.config.rippleCount + 
-                           (i / segments) * 0.3 + 
-                           amplitude * 0.2 + 
-                           this.time * 0.05) % 1;
-                const brightness = 0.5 + amplitude * 0.5;
-                const color = new THREE.Color().setHSL(hue, 1, brightness);
-                
-                colors[i * 3] = color.r;
-                colors[i * 3 + 1] = color.g;
-                colors[i * 3 + 2] = color.b;
+                positions[i * 3 + 1] = baseY + displacement;
             }
             
-            ripple.geometry.attributes.position.needsUpdate = true;
-            ripple.geometry.attributes.color.needsUpdate = true;
-            
-            ripple.rotation.z = this.time * 0.1;
+            wave.geometry.attributes.position.needsUpdate = true;
         });
     }
     
     dispose() {
-        this.ripples.forEach(ripple => {
-            ripple.geometry.dispose();
-            ripple.material.dispose();
-            this.scene.remove(ripple);
+        this.waves.forEach(wave => {
+            wave.geometry.dispose();
+            wave.material.dispose();
+            this.scene.remove(wave);
         });
-        this.ripples = [];
+        this.waves = [];
+    }
+}
+
+// Particle Sphere Waveform - Esfera de partículas blancas
+class ParticleSphereWaveform {
+    constructor(scene, analyser) {
+        this.scene = scene;
+        this.analyser = analyser;
+        this.particles = null;
+        this.time = 0;
+        
+        this.config = {
+            particleCount: 5000,
+            size: 0.03,
+            sphereRadius: 1.2,
+            expansionIntensity: 1.5,
+            rotationSpeed: 0.5
+        };
+        
+        this.create();
+    }
+    
+    create() {
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(this.config.particleCount * 3);
+        const sizes = new Float32Array(this.config.particleCount);
+        
+        // Distribución uniforme en una esfera usando algoritmo de Fibonacci
+        for (let i = 0; i < this.config.particleCount; i++) {
+            const phi = Math.acos(1 - 2 * (i + 0.5) / this.config.particleCount);
+            const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+            
+            const radius = this.config.sphereRadius;
+            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = radius * Math.cos(phi);
+            
+            // Variar ligeramente el tamaño para efecto más orgánico
+            sizes[i] = this.config.size * (0.5 + Math.random() * 0.5);
+        }
+        
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        
+        geometry.userData.originalPositions = new Float32Array(positions);
+        
+        const material = new THREE.PointsMaterial({
+            size: this.config.size,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
+        });
+        
+        this.particles = new THREE.Points(geometry, material);
+        this.scene.add(this.particles);
+    }
+    
+    update(dataArray) {
+        if (!dataArray || dataArray.length === 0) return;
+        
+        this.time += 0.01 * this.config.rotationSpeed;
+        
+        const positions = this.particles.geometry.attributes.position.array;
+        const originalPositions = this.particles.geometry.userData.originalPositions;
+        const sizes = this.particles.geometry.attributes.size.array;
+        
+        const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
+        const bassData = dataArray.slice(0, Math.floor(dataArray.length * 0.2));
+        const bassAvg = bassData.reduce((a, b) => a + b, 0) / bassData.length / 255;
+        
+        for (let i = 0; i < this.config.particleCount; i++) {
+            const i3 = i * 3;
+            const x = originalPositions[i3];
+            const y = originalPositions[i3 + 1];
+            const z = originalPositions[i3 + 2];
+            
+            // Mapear partícula al espectro de audio
+            const dataIdx = Math.floor((i / this.config.particleCount) * dataArray.length);
+            const amplitude = dataArray[dataIdx] / 255;
+            
+            // Expansión radial basada en audio
+            const distance = Math.sqrt(x * x + y * y + z * z);
+            const expansion = amplitude * this.config.expansionIntensity * 0.3 + bassAvg * 0.2;
+            const newDistance = distance + expansion;
+            
+            const scale = newDistance / distance;
+            positions[i3] = x * scale;
+            positions[i3 + 1] = y * scale;
+            positions[i3 + 2] = z * scale;
+            
+            // Variar tamaño de partículas con el audio
+            sizes[i] = this.config.size * (0.8 + amplitude * 1.5 + avgAmplitude * 0.5);
+        }
+        
+        this.particles.geometry.attributes.position.needsUpdate = true;
+        this.particles.geometry.attributes.size.needsUpdate = true;
+        
+        // Rotación suave
+        this.particles.rotation.y += 0.003;
+        this.particles.rotation.x = Math.sin(this.time * 0.3) * 0.1;
+    }
+    
+    dispose() {
+        if (this.particles) {
+            this.particles.geometry.dispose();
+            this.particles.material.dispose();
+            this.scene.remove(this.particles);
+        }
     }
 }
 
