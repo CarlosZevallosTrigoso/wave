@@ -5,16 +5,16 @@ Aplicación web para crear visualizaciones de audio reactivas con Four.js, optim
 ## Características
 
 - 🎵 Carga archivos MP3 y genera waveforms reactivos
-- 🎨 Cuatro tipos de visualización:
-  - **Circular Multicolor**: Anillo que reacciona al audio con colores del arcoíris
-  - **Barra Horizontal**: Barras verticales estilo ecualizador
-  - **Psicodélica**: Partículas en espiral con efectos aditivos
-  - **Multicolor Degradado Brillante**: Onda con gradiente cyan-magenta brillante
+- 🎨 Cuatro tipos de visualización ultra-creativos:
+  - **Slit-Scan Sphere**: Esfera de capas horizontales con efecto motion blur y desplazamiento fluido
+  - **Liquid Blur**: Formas orgánicas líquidas con deformación en tiempo real y blur psicodélico
+  - **Particle Morph**: Esfera de 8000 partículas con deformación ondulante y colores dinámicos
+  - **Echo Ripples**: Ondas concéntricas expansivas con efecto eco y distorsión moiré
 - ⚙️ Controles configurables para cada tipo de waveform
 - 📐 Dos formatos de salida: 1080x1080px (cuadrado) y 1080x1350px (vertical)
 - 🎬 Grabación automática a video WebM con audio sincronizado
 - ▶️ Controles de reproducción completos (play, pause, timeline)
-- ⚡ Optimizado para rendimiento del navegador
+- ⚡ Optimizado para rendimiento del navegador con efectos visuales intensos
 
 ## Instalación en GitHub Pages
 
@@ -77,30 +77,33 @@ audio-waveform-visualizer/
 
 ## Configuraciones por waveform
 
-### Circular Multicolor
-- Radio del círculo
-- Número de segmentos
-- Grosor de línea
-- Intensidad de reacción
+### Slit-Scan Sphere
+- Cantidad de capas horizontales
+- Radio de la esfera
+- Intensidad del efecto blur/motion
+- Velocidad de animación
+- Desplazamiento de color (hue shift)
 
-### Barra Horizontal
-- Cantidad de barras
-- Ancho de barra
-- Altura máxima
-- Espaciado
-- Color base
+### Liquid Blur
+- Cantidad de blobs orgánicos
+- Tamaño base de cada blob
+- Fluidez de las deformaciones
+- Brillo e intensidad de color
+- Rango de variación cromática
 
-### Psicodélica
-- Cantidad de partículas
-- Tamaño de partículas
-- Velocidad de rotación
-- Expansión/spread
+### Particle Morph
+- Cantidad de partículas (hasta 8000)
+- Tamaño de las partículas
+- Velocidad de morfing
+- Intensidad de la deformación ondulante
+- Velocidad del ciclo de color
 
-### Multicolor Degradado
-- Número de segmentos
-- Amplitud máxima
-- Suavidad de la onda
-- Brillo general
+### Echo Ripples
+- Cantidad de ondas concéntricas
+- Radio máximo de expansión
+- Intensidad del efecto eco
+- Velocidad de propagación
+- Grosor de las líneas
 
 ## Navegadores compatibles
 

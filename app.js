@@ -168,17 +168,17 @@ class AudioVisualizer {
         
         // Create new waveform
         switch(type) {
-            case 'circular':
-                this.currentWaveform = new CircularWaveform(this.scene, this.analyser);
+            case 'slitscan':
+                this.currentWaveform = new SlitScanWaveform(this.scene, this.analyser);
                 break;
-            case 'horizontal':
-                this.currentWaveform = new HorizontalWaveform(this.scene, this.analyser);
+            case 'liquidblur':
+                this.currentWaveform = new LiquidBlurWaveform(this.scene, this.analyser);
                 break;
-            case 'psychedelic':
-                this.currentWaveform = new PsychedelicWaveform(this.scene, this.analyser);
+            case 'particlemorph':
+                this.currentWaveform = new ParticleMorphWaveform(this.scene, this.analyser);
                 break;
-            case 'gradient':
-                this.currentWaveform = new GradientWaveform(this.scene, this.analyser);
+            case 'echoripples':
+                this.currentWaveform = new EchoRipplesWaveform(this.scene, this.analyser);
                 break;
         }
         
@@ -384,155 +384,207 @@ class AudioVisualizer {
     }
 }
 
-// Circular Multicolor Waveform
-class CircularWaveform {
+// Slit-Scan Sphere Waveform (Inspired by layered sphere with motion blur)
+class SlitScanWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
         this.analyser = analyser;
-        this.mesh = null;
+        this.layers = [];
+        this.time = 0;
         
         this.config = {
-            radius: 0.8,
-            segments: 64,
-            thickness: 0.05,
-            intensity: 1.5
+            layerCount: 30,
+            radius: 1.2,
+            blur: 0.8,
+            speed: 1.0,
+            colorShift: 0.0
         };
         
         this.create();
     }
     
     create() {
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(this.config.segments * 3);
-        const colors = new Float32Array(this.config.segments * 3);
-        
-        // Initialize positions in a circle
-        for (let i = 0; i < this.config.segments; i++) {
-            const angle = (i / this.config.segments) * Math.PI * 2;
-            positions[i * 3] = Math.cos(angle) * this.config.radius;
-            positions[i * 3 + 1] = Math.sin(angle) * this.config.radius;
-            positions[i * 3 + 2] = 0;
+        // Create multiple horizontal slice layers
+        for (let i = 0; i < this.config.layerCount; i++) {
+            const t = i / this.config.layerCount;
+            const y = (t - 0.5) * 2;
             
-            // Rainbow colors
-            const hue = i / this.config.segments;
-            const color = new THREE.Color().setHSL(hue, 1, 0.5);
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
-        }
-        
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        
-        const material = new THREE.LineBasicMaterial({
-            vertexColors: true,
-            linewidth: 3
-        });
-        
-        this.mesh = new THREE.LineLoop(geometry, material);
-        this.scene.add(this.mesh);
-    }
-    
-    update(dataArray) {
-        const positions = this.mesh.geometry.attributes.position.array;
-        const segmentSize = Math.floor(dataArray.length / this.config.segments);
-        
-        for (let i = 0; i < this.config.segments; i++) {
-            const angle = (i / this.config.segments) * Math.PI * 2;
-            const dataIndex = i * segmentSize;
-            const amplitude = (dataArray[dataIndex] / 255) * this.config.intensity;
-            const radius = this.config.radius + amplitude * 0.5;
+            // Calculate radius for spherical shape
+            const sphereRadius = Math.sqrt(Math.max(0, 1 - y * y)) * this.config.radius;
             
-            positions[i * 3] = Math.cos(angle) * radius;
-            positions[i * 3 + 1] = Math.sin(angle) * radius;
-        }
-        
-        this.mesh.geometry.attributes.position.needsUpdate = true;
-    }
-    
-    dispose() {
-        if (this.mesh) {
-            this.mesh.geometry.dispose();
-            this.mesh.material.dispose();
-            this.scene.remove(this.mesh);
-        }
-    }
-}
-
-// Horizontal Bar Waveform
-class HorizontalWaveform {
-    constructor(scene, analyser) {
-        this.scene = scene;
-        this.analyser = analyser;
-        this.bars = [];
-        
-        this.config = {
-            barCount: 64,
-            barWidth: 0.025,
-            maxHeight: 1.5,
-            spacing: 0.03,
-            color: '#00ffff'
-        };
-        
-        this.create();
-    }
-    
-    create() {
-        const totalWidth = this.config.barCount * (this.config.barWidth + this.config.spacing);
-        const startX = -totalWidth / 2;
-        
-        for (let i = 0; i < this.config.barCount; i++) {
-            const geometry = new THREE.BoxGeometry(
-                this.config.barWidth,
-                0.1,
-                0.1
+            const geometry = new THREE.RingGeometry(
+                sphereRadius * 0.95,
+                sphereRadius,
+                64
             );
             
             const material = new THREE.MeshBasicMaterial({
-                color: new THREE.Color(this.config.color)
+                color: new THREE.Color().setHSL(0.05 + this.config.colorShift, 0.8, 0.5),
+                transparent: true,
+                opacity: 0.85,
+                side: THREE.DoubleSide,
+                blending: THREE.AdditiveBlending
             });
             
-            const bar = new THREE.Mesh(geometry, material);
-            bar.position.x = startX + i * (this.config.barWidth + this.config.spacing);
-            bar.position.y = 0;
+            const layer = new THREE.Mesh(geometry, material);
+            layer.rotation.x = Math.PI / 2;
+            layer.position.y = y * 1.5;
+            layer.userData = { index: i, baseY: y * 1.5 };
             
-            this.bars.push(bar);
-            this.scene.add(bar);
+            this.layers.push(layer);
+            this.scene.add(layer);
         }
     }
     
     update(dataArray) {
-        const segmentSize = Math.floor(dataArray.length / this.config.barCount);
+        this.time += 0.01 * this.config.speed;
         
-        this.bars.forEach((bar, i) => {
-            const dataIndex = i * segmentSize;
-            const amplitude = (dataArray[dataIndex] / 255) * this.config.maxHeight;
+        const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
+        const bassData = dataArray.slice(0, Math.floor(dataArray.length * 0.1));
+        const bassAvg = bassData.reduce((a, b) => a + b) / bassData.length / 255;
+        
+        this.layers.forEach((layer, i) => {
+            const t = i / this.layers.length;
+            const dataIdx = Math.floor(t * dataArray.length);
+            const amplitude = (dataArray[dataIdx] / 255);
             
-            bar.scale.y = Math.max(0.1, amplitude);
+            // Motion blur effect: offset Y position
+            const offset = Math.sin(this.time + i * 0.2) * this.config.blur * amplitude;
+            layer.position.y = layer.userData.baseY + offset;
             
-            // Update color based on amplitude
-            const color = new THREE.Color(this.config.color);
-            const brightness = 0.5 + (amplitude / this.config.maxHeight) * 0.5;
-            bar.material.color.setRGB(
-                color.r * brightness,
-                color.g * brightness,
-                color.b * brightness
-            );
+            // Scale effect
+            const scale = 1 + amplitude * 0.3 + bassAvg * 0.2;
+            layer.scale.set(scale, scale, 1);
+            
+            // Color shift based on amplitude and position
+            const hue = (0.05 + this.config.colorShift + t * 0.15 + amplitude * 0.1) % 1;
+            const brightness = 0.4 + amplitude * 0.6;
+            layer.material.color.setHSL(hue, 0.9, brightness);
+            
+            // Opacity pulse
+            layer.material.opacity = 0.6 + amplitude * 0.4;
         });
     }
     
     dispose() {
-        this.bars.forEach(bar => {
-            bar.geometry.dispose();
-            bar.material.dispose();
-            this.scene.remove(bar);
+        this.layers.forEach(layer => {
+            layer.geometry.dispose();
+            layer.material.dispose();
+            this.scene.remove(layer);
         });
-        this.bars = [];
+        this.layers = [];
     }
 }
 
-// Psychedelic Waveform
-class PsychedelicWaveform {
+// Liquid Blur Waveform (Inspired by organic blurred shapes)
+class LiquidBlurWaveform {
+    constructor(scene, analyser) {
+        this.scene = scene;
+        this.analyser = analyser;
+        this.blobs = [];
+        this.time = 0;
+        
+        this.config = {
+            blobCount: 5,
+            size: 0.6,
+            fluidity: 2.0,
+            brightness: 2.5,
+            colorRange: 0.3
+        };
+        
+        this.create();
+    }
+    
+    create() {
+        for (let i = 0; i < this.config.blobCount; i++) {
+            // Create blob with high vertex count for smooth deformation
+            const geometry = new THREE.SphereGeometry(this.config.size, 32, 32);
+            
+            // Store original positions
+            const positions = geometry.attributes.position.array;
+            geometry.userData.originalPositions = new Float32Array(positions);
+            
+            const material = new THREE.MeshBasicMaterial({
+                color: new THREE.Color().setHSL(0.3 + i * 0.1, 1, 0.5),
+                transparent: true,
+                opacity: 0.7,
+                blending: THREE.AdditiveBlending
+            });
+            
+            const blob = new THREE.Mesh(geometry, material);
+            blob.userData = { 
+                index: i,
+                phase: i * Math.PI * 2 / this.config.blobCount
+            };
+            
+            this.blobs.push(blob);
+            this.scene.add(blob);
+        }
+    }
+    
+    update(dataArray) {
+        this.time += 0.015 * this.config.fluidity;
+        
+        const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
+        const bassAvg = dataArray.slice(0, Math.floor(dataArray.length * 0.15))
+            .reduce((a, b) => a + b, 0) / (dataArray.length * 0.15) / 255;
+        
+        this.blobs.forEach((blob, blobIdx) => {
+            const phase = blob.userData.phase;
+            
+            // Position blobs in organic pattern
+            const angle = this.time + phase;
+            const radius = 0.3 + avgAmplitude * 0.8;
+            blob.position.x = Math.cos(angle) * radius;
+            blob.position.y = Math.sin(angle) * radius * 0.7;
+            
+            // Deform geometry for liquid effect
+            const positions = blob.geometry.attributes.position.array;
+            const originalPositions = blob.geometry.userData.originalPositions;
+            
+            for (let i = 0; i < positions.length; i += 3) {
+                const idx = Math.floor((i / 3) / (positions.length / 3) * dataArray.length);
+                const amplitude = dataArray[idx] / 255;
+                
+                const x = originalPositions[i];
+                const y = originalPositions[i + 1];
+                const z = originalPositions[i + 2];
+                
+                // Create organic distortion
+                const distortion = Math.sin(this.time * 2 + x * 3) * 
+                                 Math.cos(this.time * 1.5 + y * 3) * 
+                                 amplitude * 0.3;
+                
+                positions[i] = x * (1 + distortion);
+                positions[i + 1] = y * (1 + distortion);
+                positions[i + 2] = z * (1 + distortion);
+            }
+            
+            blob.geometry.attributes.position.needsUpdate = true;
+            
+            // Scale with bass
+            const scale = 0.8 + bassAvg * 1.5 + avgAmplitude * 0.5;
+            blob.scale.set(scale, scale, scale);
+            
+            // Dynamic color
+            const hue = (0.25 + blobIdx * 0.08 + avgAmplitude * this.config.colorRange) % 1;
+            blob.material.color.setHSL(hue, 1, 0.5 * this.config.brightness);
+            blob.material.opacity = 0.5 + amplitude * 0.4;
+        });
+    }
+    
+    dispose() {
+        this.blobs.forEach(blob => {
+            blob.geometry.dispose();
+            blob.material.dispose();
+            this.scene.remove(blob);
+        });
+        this.blobs = [];
+    }
+}
+
+// Particle Morph Waveform (Inspired by dotted sphere with wave deformation)
+class ParticleMorphWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
         this.analyser = analyser;
@@ -540,10 +592,11 @@ class PsychedelicWaveform {
         this.time = 0;
         
         this.config = {
-            particleCount: 1000,
-            size: 0.03,
-            speed: 1.0,
-            spread: 2.0
+            particleCount: 8000,
+            size: 0.02,
+            morphSpeed: 1.0,
+            waveIntensity: 1.5,
+            colorCycle: 0.5
         };
         
         this.create();
@@ -555,17 +608,20 @@ class PsychedelicWaveform {
         const colors = new Float32Array(this.config.particleCount * 3);
         const sizes = new Float32Array(this.config.particleCount);
         
+        // Create sphere distribution
         for (let i = 0; i < this.config.particleCount; i++) {
-            // Spiral pattern
-            const t = i / this.config.particleCount;
-            const angle = t * Math.PI * 4;
-            const radius = t * this.config.spread;
+            // Fibonacci sphere distribution for even particle placement
+            const phi = Math.acos(1 - 2 * (i + 0.5) / this.config.particleCount);
+            const theta = Math.PI * (1 + Math.sqrt(5)) * i;
             
-            positions[i * 3] = Math.cos(angle) * radius;
-            positions[i * 3 + 1] = Math.sin(angle) * radius;
-            positions[i * 3 + 2] = 0;
+            const radius = 1.2;
+            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+            positions[i * 3 + 2] = radius * Math.cos(phi);
             
-            const color = new THREE.Color().setHSL(t, 1, 0.5);
+            // Color gradient
+            const hue = (i / this.config.particleCount + 0.5) % 1;
+            const color = new THREE.Color().setHSL(hue, 1, 0.5);
             colors[i * 3] = color.r;
             colors[i * 3 + 1] = color.g;
             colors[i * 3 + 2] = color.b;
@@ -577,12 +633,15 @@ class PsychedelicWaveform {
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
         
+        geometry.userData.originalPositions = new Float32Array(positions);
+        
         const material = new THREE.PointsMaterial({
             size: this.config.size,
             vertexColors: true,
             transparent: true,
-            opacity: 0.8,
-            blending: THREE.AdditiveBlending
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
         });
         
         this.particles = new THREE.Points(geometry, material);
@@ -590,30 +649,59 @@ class PsychedelicWaveform {
     }
     
     update(dataArray) {
-        this.time += 0.01 * this.config.speed;
+        this.time += 0.01 * this.config.morphSpeed;
         
         const positions = this.particles.geometry.attributes.position.array;
+        const originalPositions = this.particles.geometry.userData.originalPositions;
+        const colors = this.particles.geometry.attributes.color.array;
         const sizes = this.particles.geometry.attributes.size.array;
         
         const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
         
         for (let i = 0; i < this.config.particleCount; i++) {
-            const t = i / this.config.particleCount;
-            const angle = t * Math.PI * 4 + this.time;
-            const radius = t * this.config.spread;
+            const i3 = i * 3;
+            const x = originalPositions[i3];
+            const y = originalPositions[i3 + 1];
+            const z = originalPositions[i3 + 2];
             
-            const dataIndex = Math.floor(t * dataArray.length);
-            const amplitude = (dataArray[dataIndex] / 255) * 0.5;
+            // Get corresponding audio data
+            const dataIdx = Math.floor((i / this.config.particleCount) * dataArray.length);
+            const amplitude = dataArray[dataIdx] / 255;
             
-            positions[i * 3] = Math.cos(angle) * (radius + amplitude);
-            positions[i * 3 + 1] = Math.sin(angle) * (radius + amplitude);
+            // Create wave deformation
+            const angle = Math.atan2(y, x);
+            const wave1 = Math.sin(angle * 3 + this.time * 2) * amplitude * this.config.waveIntensity;
+            const wave2 = Math.cos(angle * 5 - this.time * 1.5) * amplitude * this.config.waveIntensity;
             
-            sizes[i] = this.config.size * (1 + avgAmplitude * 2);
+            const deformation = (wave1 + wave2) * 0.3;
+            const distance = Math.sqrt(x * x + y * y + z * z);
+            const newDistance = distance + deformation;
+            
+            const scale = newDistance / distance;
+            positions[i3] = x * scale;
+            positions[i3 + 1] = y * scale;
+            positions[i3 + 2] = z * scale;
+            
+            // Dynamic colors
+            const hue = ((i / this.config.particleCount) + 
+                        this.time * this.config.colorCycle * 0.1 + 
+                        amplitude * 0.2) % 1;
+            const color = new THREE.Color().setHSL(hue, 1, 0.5);
+            colors[i3] = color.r * (1 + amplitude);
+            colors[i3 + 1] = color.g * (1 + amplitude);
+            colors[i3 + 2] = color.b * (1 + amplitude);
+            
+            // Size variation
+            sizes[i] = this.config.size * (0.5 + amplitude * 2 + avgAmplitude);
         }
         
         this.particles.geometry.attributes.position.needsUpdate = true;
+        this.particles.geometry.attributes.color.needsUpdate = true;
         this.particles.geometry.attributes.size.needsUpdate = true;
-        this.particles.rotation.z += 0.002 * this.config.speed;
+        
+        // Slow rotation
+        this.particles.rotation.y += 0.002;
+        this.particles.rotation.x = Math.sin(this.time * 0.5) * 0.2;
     }
     
     dispose() {
@@ -625,90 +713,135 @@ class PsychedelicWaveform {
     }
 }
 
-// Gradient Bright Waveform
-class GradientWaveform {
+// Echo Ripples Waveform (Inspired by concentric circles and echo effects)
+class EchoRipplesWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
         this.analyser = analyser;
-        this.mesh = null;
+        this.ripples = [];
+        this.time = 0;
         
         this.config = {
-            segments: 128,
-            amplitude: 1.2,
-            smoothness: 0.8,
-            brightness: 2.0
+            rippleCount: 12,
+            maxRadius: 2.0,
+            echoIntensity: 1.5,
+            speed: 1.0,
+            lineWidth: 2.0
         };
         
         this.create();
     }
     
     create() {
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(this.config.segments * 3);
-        const colors = new Float32Array(this.config.segments * 3);
-        
-        const width = 3;
-        const step = width / this.config.segments;
-        
-        for (let i = 0; i < this.config.segments; i++) {
-            positions[i * 3] = -width / 2 + i * step;
-            positions[i * 3 + 1] = 0;
-            positions[i * 3 + 2] = 0;
+        for (let i = 0; i < this.config.rippleCount; i++) {
+            const segments = 128;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array((segments + 1) * 3);
+            const colors = new Float32Array((segments + 1) * 3);
             
-            // Gradient from cyan to magenta
-            const t = i / this.config.segments;
-            const color = new THREE.Color();
-            color.setHSL(0.5 + t * 0.3, 1, 0.5);
+            for (let j = 0; j <= segments; j++) {
+                const angle = (j / segments) * Math.PI * 2;
+                const radius = 0.1;
+                
+                positions[j * 3] = Math.cos(angle) * radius;
+                positions[j * 3 + 1] = Math.sin(angle) * radius;
+                positions[j * 3 + 2] = 0;
+                
+                const hue = i / this.config.rippleCount;
+                const color = new THREE.Color().setHSL(hue, 1, 0.5);
+                colors[j * 3] = color.r;
+                colors[j * 3 + 1] = color.g;
+                colors[j * 3 + 2] = color.b;
+            }
             
-            colors[i * 3] = color.r * this.config.brightness;
-            colors[i * 3 + 1] = color.g * this.config.brightness;
-            colors[i * 3 + 2] = color.b * this.config.brightness;
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.LineBasicMaterial({
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8,
+                linewidth: this.config.lineWidth,
+                blending: THREE.AdditiveBlending
+            });
+            
+            const ripple = new THREE.LineLoop(geometry, material);
+            ripple.userData = { 
+                index: i,
+                phase: (i / this.config.rippleCount) * Math.PI * 2,
+                baseRadius: 0.1
+            };
+            
+            this.ripples.push(ripple);
+            this.scene.add(ripple);
         }
-        
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        
-        const material = new THREE.LineBasicMaterial({
-            vertexColors: true,
-            linewidth: 2
-        });
-        
-        this.mesh = new THREE.Line(geometry, material);
-        this.scene.add(this.mesh);
     }
     
     update(dataArray) {
-        const positions = this.mesh.geometry.attributes.position.array;
-        const colors = this.mesh.geometry.attributes.color.array;
-        const segmentSize = Math.floor(dataArray.length / this.config.segments);
+        this.time += 0.02 * this.config.speed;
         
-        for (let i = 0; i < this.config.segments; i++) {
-            const dataIndex = i * segmentSize;
-            const amplitude = (dataArray[dataIndex] / 255) * this.config.amplitude;
-            
-            positions[i * 3 + 1] = amplitude;
-            
-            // Update brightness based on amplitude
-            const t = i / this.config.segments;
-            const color = new THREE.Color();
-            color.setHSL(0.5 + t * 0.3, 1, 0.5);
-            
-            const brightness = this.config.brightness * (0.5 + amplitude * 0.5);
-            colors[i * 3] = color.r * brightness;
-            colors[i * 3 + 1] = color.g * brightness;
-            colors[i * 3 + 2] = color.b * brightness;
-        }
+        const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
+        const bassAvg = dataArray.slice(0, Math.floor(dataArray.length * 0.2))
+            .reduce((a, b) => a + b, 0) / (dataArray.length * 0.2) / 255;
         
-        this.mesh.geometry.attributes.position.needsUpdate = true;
-        this.mesh.geometry.attributes.color.needsUpdate = true;
+        this.ripples.forEach((ripple, idx) => {
+            const positions = ripple.geometry.attributes.position.array;
+            const colors = ripple.geometry.attributes.color.array;
+            const segments = positions.length / 3 - 1;
+            
+            // Expand ripple outward with echo effect
+            const progress = ((this.time + ripple.userData.phase) % (Math.PI * 2)) / (Math.PI * 2);
+            const radius = progress * this.config.maxRadius;
+            
+            // Opacity fades as ripple expands
+            const opacity = 1 - progress;
+            ripple.material.opacity = opacity * 0.9;
+            
+            for (let i = 0; i <= segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                
+                // Get audio data for this segment
+                const dataIdx = Math.floor((i / segments) * dataArray.length);
+                const amplitude = (dataArray[dataIdx] / 255) * this.config.echoIntensity;
+                
+                // Create echo distortion (multiple overlapping waves)
+                const distortion = Math.sin(angle * 3 - this.time * 3) * amplitude * 0.2 +
+                                 Math.sin(angle * 5 + this.time * 2) * amplitude * 0.15 +
+                                 bassAvg * 0.3;
+                
+                const finalRadius = radius + distortion;
+                
+                positions[i * 3] = Math.cos(angle) * finalRadius;
+                positions[i * 3 + 1] = Math.sin(angle) * finalRadius;
+                
+                // Color shifts with position and audio
+                const hue = (idx / this.config.rippleCount + 
+                           (i / segments) * 0.3 + 
+                           amplitude * 0.2 + 
+                           this.time * 0.05) % 1;
+                const brightness = 0.5 + amplitude * 0.5;
+                const color = new THREE.Color().setHSL(hue, 1, brightness);
+                
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+            
+            ripple.geometry.attributes.position.needsUpdate = true;
+            ripple.geometry.attributes.color.needsUpdate = true;
+            
+            // Subtle rotation for moiré effect
+            ripple.rotation.z = this.time * 0.1;
+        });
     }
     
     dispose() {
-        if (this.mesh) {
-            this.mesh.geometry.dispose();
-            this.mesh.material.dispose();
-            this.scene.remove(this.mesh);
-        }
+        this.ripples.forEach(ripple => {
+            ripple.geometry.dispose();
+            ripple.material.dispose();
+            this.scene.remove(ripple);
+        });
+        this.ripples = [];
     }
 }
 
