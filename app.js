@@ -1,8 +1,3 @@
-// Import post-processing (usando módulos ES6)
-import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/postprocessing/UnrealBloomPass.js';
-
 class AudioVisualizer {
     constructor() {
         this.canvas = document.getElementById('visualizer');
@@ -49,9 +44,9 @@ class AudioVisualizer {
         this.exportHeight = height;
         
         // Calcular tamaño responsive manteniendo aspect ratio
-        const container = this.canvas.parentElement;
-        const containerWidth = container.clientWidth;
-        const containerHeight = container.clientHeight;
+        const wrapper = this.canvas.parentElement;
+        const containerWidth = wrapper.clientWidth;
+        const containerHeight = wrapper.clientHeight;
         
         const aspectRatio = width / height;
         const containerRatio = containerWidth / containerHeight;
@@ -95,15 +90,13 @@ class AudioVisualizer {
     }
     
     setupPostProcessing() {
-        // Composer para post-processing
-        this.composer = new EffectComposer(this.renderer);
+        // Usar versiones globales de Three.js
+        this.composer = new THREE.EffectComposer(this.renderer);
         
-        // Render pass básico
-        const renderPass = new RenderPass(this.scene, this.camera);
+        const renderPass = new THREE.RenderPass(this.scene, this.camera);
         this.composer.addPass(renderPass);
         
-        // Bloom pass
-        this.bloomPass = new UnrealBloomPass(
+        this.bloomPass = new THREE.UnrealBloomPass(
             new THREE.Vector2(this.canvas.width, this.canvas.height),
             1.5,  // strength
             0.4,  // radius
@@ -260,19 +253,19 @@ class AudioVisualizer {
             if (typeof value === 'number') {
                 const input = document.createElement('input');
                 input.type = 'range';
-                input.min = value === this.currentWaveform.config.segments ? 3 : 0.1;
-                input.max = value === this.currentWaveform.config.segments ? 100 : 
-                            key.includes('radius') || key.includes('size') ? 2 : 10;
-                input.step = value === this.currentWaveform.config.segments ? 1 : 0.1;
+                input.min = key === 'particleCount' ? 1000 : 0.1;
+                input.max = key === 'particleCount' ? 10000 : 
+                            key.includes('radius') || key.includes('size') ? 3 : 10;
+                input.step = key === 'particleCount' ? 100 : 0.1;
                 input.value = value;
                 
                 const valueDisplay = document.createElement('span');
-                valueDisplay.textContent = value.toFixed(1);
+                valueDisplay.textContent = key === 'particleCount' ? value : value.toFixed(1);
                 
                 input.addEventListener('input', (e) => {
                     const val = parseFloat(e.target.value);
                     this.currentWaveform.config[key] = val;
-                    valueDisplay.textContent = val.toFixed(1);
+                    valueDisplay.textContent = key === 'particleCount' ? val : val.toFixed(1);
                 });
                 
                 item.appendChild(input);
