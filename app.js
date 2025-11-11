@@ -1,3 +1,8 @@
+// Import post-processing (usando módulos ES6)
+import { EffectComposer } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+
 class AudioVisualizer {
     constructor() {
         this.canvas = document.getElementById('visualizer');
@@ -18,22 +23,55 @@ class AudioVisualizer {
         this.renderer = null;
         this.currentWaveform = null;
         
+        // Post-processing
+        this.composer = null;
+        this.bloomPass = null;
+        this.bloomEnabled = false;
+        
         // Format
         this.currentFormat = '1080x1080';
+        this.exportWidth = 1080;
+        this.exportHeight = 1080;
         
         this.init();
         this.setupEventListeners();
+        this.updateCanvasSize();
     }
     
     init() {
-        this.updateCanvasSize();
         this.setupThreeJS();
+        this.setupPostProcessing();
     }
     
     updateCanvasSize() {
         const [width, height] = this.currentFormat.split('x').map(Number);
-        this.canvas.width = width;
-        this.canvas.height = height;
+        this.exportWidth = width;
+        this.exportHeight = height;
+        
+        // Calcular tamaño responsive manteniendo aspect ratio
+        const container = this.canvas.parentElement;
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+        
+        const aspectRatio = width / height;
+        const containerRatio = containerWidth / containerHeight;
+        
+        let displayWidth, displayHeight;
+        
+        if (containerRatio > aspectRatio) {
+            // Container es más ancho - limitar por altura
+            displayHeight = containerHeight;
+            displayWidth = displayHeight * aspectRatio;
+        } else {
+            // Container es más alto - limitar por ancho
+            displayWidth = containerWidth;
+            displayHeight = displayWidth / aspectRatio;
+        }
+        
+        this.canvas.width = displayWidth;
+        this.canvas.height = displayHeight;
+        this.canvas.style.width = displayWidth + 'px';
+        this.canvas.style.height = displayHeight + 'px';
     }
     
     setupThreeJS() {
@@ -42,7 +80,7 @@ class AudioVisualizer {
         this.scene.background = new THREE.Color(0x000000);
         
         // Camera
-        const aspect = this.canvas.width / this.canvas.height;
+        const aspect = this.exportWidth / this.exportHeight;
         this.camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
         this.camera.position.z = 5;
         
@@ -53,7 +91,26 @@ class AudioVisualizer {
             preserveDrawingBuffer: true
         });
         this.renderer.setSize(this.canvas.width, this.canvas.height);
-        this.renderer.setPixelRatio(1); // Fixed ratio for consistent output
+        this.renderer.setPixelRatio(1);
+    }
+    
+    setupPostProcessing() {
+        // Composer para post-processing
+        this.composer = new EffectComposer(this.renderer);
+        
+        // Render pass básico
+        const renderPass = new RenderPass(this.scene, this.camera);
+        this.composer.addPass(renderPass);
+        
+        // Bloom pass
+        this.bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(this.canvas.width, this.canvas.height),
+            1.5,  // strength
+            0.4,  // radius
+            0.85  // threshold
+        );
+        this.bloomPass.enabled = false;
+        this.composer.addPass(this.bloomPass);
     }
     
     setupEventListeners() {
@@ -63,6 +120,24 @@ class AudioVisualizer {
         document.getElementById('playPauseBtn').addEventListener('click', () => this.togglePlayPause());
         document.getElementById('timeline').addEventListener('input', (e) => this.seek(e.target.value));
         document.getElementById('recordBtn').addEventListener('click', () => this.toggleRecording());
+        document.getElementById('bloomToggle').addEventListener('change', (e) => this.toggleBloom(e.target.checked));
+        
+        // Resize listener
+        window.addEventListener('resize', () => {
+            this.updateCanvasSize();
+            this.renderer.setSize(this.canvas.width, this.canvas.height);
+            this.composer.setSize(this.canvas.width, this.canvas.height);
+            
+            const aspect = this.exportWidth / this.exportHeight;
+            this.camera.aspect = aspect;
+            this.camera.updateProjectionMatrix();
+        });
+    }
+    
+    toggleBloom(enabled) {
+        this.bloomEnabled = enabled;
+        this.bloomPass.enabled = enabled;
+        this.showStatus(enabled ? 'Bloom activado' : 'Bloom desactivado', 'success');
     }
     
     async loadAudio(event) {
@@ -72,7 +147,6 @@ class AudioVisualizer {
         this.showStatus('Cargando audio...');
         
         try {
-            // Create audio element
             if (this.audioElement) {
                 this.audioElement.pause();
                 this.audioElement = null;
@@ -86,17 +160,14 @@ class AudioVisualizer {
                 this.audioElement.addEventListener('error', reject);
             });
             
-            // Setup audio context
             if (!this.audioContext) {
                 this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
             
-            // Setup analyser
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = 512;
             this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
             
-            // Connect audio
             if (this.audioSource) {
                 this.audioSource.disconnect();
             }
@@ -104,21 +175,17 @@ class AudioVisualizer {
             this.audioSource.connect(this.analyser);
             this.analyser.connect(this.audioContext.destination);
             
-            // Update duration
             document.getElementById('duration').textContent = this.formatTime(this.audioElement.duration);
             
-            // Enable controls
             document.getElementById('playPauseBtn').disabled = false;
             document.getElementById('timeline').disabled = false;
             document.getElementById('recordBtn').disabled = false;
             
-            // Load initial waveform
             const waveformType = document.getElementById('waveformType').value;
             this.changeWaveform(waveformType);
             
             this.showStatus('Audio cargado correctamente', 'success');
             
-            // Update timeline while playing
             this.audioElement.addEventListener('timeupdate', () => {
                 if (!this.isPlaying) return;
                 const progress = (this.audioElement.currentTime / this.audioElement.duration) * 100;
@@ -144,15 +211,13 @@ class AudioVisualizer {
         this.currentFormat = format;
         this.updateCanvasSize();
         
-        // Update camera aspect
-        const aspect = this.canvas.width / this.canvas.height;
+        const aspect = this.exportWidth / this.exportHeight;
         this.camera.aspect = aspect;
         this.camera.updateProjectionMatrix();
         
-        // Update renderer
         this.renderer.setSize(this.canvas.width, this.canvas.height);
+        this.composer.setSize(this.canvas.width, this.canvas.height);
         
-        // Reload waveform
         if (this.currentWaveform) {
             const waveformType = document.getElementById('waveformType').value;
             this.changeWaveform(waveformType);
@@ -160,20 +225,12 @@ class AudioVisualizer {
     }
     
     changeWaveform(type) {
-        // Clean up previous waveform
         if (this.currentWaveform) {
             this.currentWaveform.dispose();
             this.scene.clear();
         }
         
-        // Create new waveform
         switch(type) {
-            case 'slitscan':
-                this.currentWaveform = new SlitScanWaveform(this.scene, this.analyser);
-                break;
-            case 'liquidblur':
-                this.currentWaveform = new LiquidBlurWaveform(this.scene, this.analyser);
-                break;
             case 'particlemorph':
                 this.currentWaveform = new ParticleMorphWaveform(this.scene, this.analyser);
                 break;
@@ -182,10 +239,8 @@ class AudioVisualizer {
                 break;
         }
         
-        // Setup config UI
         this.setupConfigUI();
-        
-        this.showStatus(`Waveform cambiado a: ${type}`, 'success');
+        this.showStatus(`Waveform: ${type}`, 'success');
     }
     
     setupConfigUI() {
@@ -202,9 +257,8 @@ class AudioVisualizer {
             label.textContent = this.formatConfigLabel(key);
             item.appendChild(label);
             
-            let input;
             if (typeof value === 'number') {
-                input = document.createElement('input');
+                const input = document.createElement('input');
                 input.type = 'range';
                 input.min = value === this.currentWaveform.config.segments ? 3 : 0.1;
                 input.max = value === this.currentWaveform.config.segments ? 100 : 
@@ -223,14 +277,6 @@ class AudioVisualizer {
                 
                 item.appendChild(input);
                 item.appendChild(valueDisplay);
-            } else if (typeof value === 'string' && value.startsWith('#')) {
-                input = document.createElement('input');
-                input.type = 'color';
-                input.value = value;
-                input.addEventListener('input', (e) => {
-                    this.currentWaveform.config[key] = e.target.value;
-                });
-                item.appendChild(input);
             }
             
             configControls.appendChild(item);
@@ -252,7 +298,6 @@ class AudioVisualizer {
             this.isPlaying = false;
             document.getElementById('playPauseBtn').querySelector('.icon').textContent = '▶';
         } else {
-            // Resume audio context if suspended
             if (this.audioContext.state === 'suspended') {
                 this.audioContext.resume();
             }
@@ -276,16 +321,18 @@ class AudioVisualizer {
         
         requestAnimationFrame(() => this.animate());
         
-        // Get frequency data
         this.analyser.getByteFrequencyData(this.dataArray);
         
-        // Update waveform
         if (this.currentWaveform) {
             this.currentWaveform.update(this.dataArray);
         }
         
-        // Render
-        this.renderer.render(this.scene, this.camera);
+        // Render con o sin post-processing
+        if (this.bloomEnabled) {
+            this.composer.render();
+        } else {
+            this.renderer.render(this.scene, this.camera);
+        }
     }
     
     toggleRecording() {
@@ -301,20 +348,15 @@ class AudioVisualizer {
         
         this.recordedChunks = [];
         
-        // Create stream from canvas
-        const canvasStream = this.canvas.captureStream(30); // 30 FPS
-        
-        // Create stream from audio
+        const canvasStream = this.canvas.captureStream(30);
         const audioDestination = this.audioContext.createMediaStreamDestination();
         this.audioSource.connect(audioDestination);
         
-        // Combine streams
         const combinedStream = new MediaStream([
             ...canvasStream.getVideoTracks(),
             ...audioDestination.stream.getAudioTracks()
         ]);
         
-        // Setup recorder
         this.mediaRecorder = new MediaRecorder(combinedStream, {
             mimeType: 'video/webm;codecs=vp9,opus',
             videoBitsPerSecond: 8000000
@@ -330,14 +372,12 @@ class AudioVisualizer {
             this.saveRecording();
         };
         
-        // Start recording
         this.mediaRecorder.start();
         this.isRecording = true;
         
         document.getElementById('recordBtn').classList.add('recording');
         document.getElementById('recordBtn').querySelector('.text').textContent = 'Grabando...';
         
-        // Auto-start playback if not playing
         if (!this.isPlaying) {
             this.togglePlayPause();
         }
@@ -352,9 +392,9 @@ class AudioVisualizer {
         this.isRecording = false;
         
         document.getElementById('recordBtn').classList.remove('recording');
-        document.getElementById('recordBtn').querySelector('.text').textContent = 'Grabar';
+        document.getElementById('recordBtn').querySelector('.text').textContent = 'Grabar Video';
         
-        this.showStatus('Grabación finalizada. Guardando...', 'success');
+        this.showStatus('Guardando video...', 'success');
     }
     
     saveRecording() {
@@ -368,7 +408,7 @@ class AudioVisualizer {
         
         URL.revokeObjectURL(url);
         
-        this.showStatus('Video guardado correctamente', 'success');
+        this.showStatus('Video guardado', 'success');
     }
     
     formatTime(seconds) {
@@ -384,206 +424,7 @@ class AudioVisualizer {
     }
 }
 
-// Slit-Scan Sphere Waveform (Inspired by layered sphere with motion blur)
-class SlitScanWaveform {
-    constructor(scene, analyser) {
-        this.scene = scene;
-        this.analyser = analyser;
-        this.layers = [];
-        this.time = 0;
-        
-        this.config = {
-            layerCount: 30,
-            radius: 1.2,
-            blur: 0.8,
-            speed: 1.0,
-            colorShift: 0.0
-        };
-        
-        this.create();
-    }
-    
-    create() {
-        // Create multiple horizontal slice layers
-        for (let i = 0; i < this.config.layerCount; i++) {
-            const t = i / this.config.layerCount;
-            const y = (t - 0.5) * 2;
-            
-            // Calculate radius for spherical shape
-            const sphereRadius = Math.sqrt(Math.max(0, 1 - y * y)) * this.config.radius;
-            
-            const geometry = new THREE.RingGeometry(
-                sphereRadius * 0.95,
-                sphereRadius,
-                64
-            );
-            
-            const material = new THREE.MeshBasicMaterial({
-                color: new THREE.Color().setHSL(0.05 + this.config.colorShift, 0.8, 0.5),
-                transparent: true,
-                opacity: 0.85,
-                side: THREE.DoubleSide,
-                blending: THREE.AdditiveBlending
-            });
-            
-            const layer = new THREE.Mesh(geometry, material);
-            layer.rotation.x = Math.PI / 2;
-            layer.position.y = y * 1.5;
-            layer.userData = { index: i, baseY: y * 1.5 };
-            
-            this.layers.push(layer);
-            this.scene.add(layer);
-        }
-    }
-    
-    update(dataArray) {
-        this.time += 0.01 * this.config.speed;
-        
-        const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
-        const bassData = dataArray.slice(0, Math.floor(dataArray.length * 0.1));
-        const bassAvg = bassData.reduce((a, b) => a + b) / bassData.length / 255;
-        
-        this.layers.forEach((layer, i) => {
-            const t = i / this.layers.length;
-            const dataIdx = Math.floor(t * dataArray.length);
-            const amplitude = (dataArray[dataIdx] / 255);
-            
-            // Motion blur effect: offset Y position
-            const offset = Math.sin(this.time + i * 0.2) * this.config.blur * amplitude;
-            layer.position.y = layer.userData.baseY + offset;
-            
-            // Scale effect
-            const scale = 1 + amplitude * 0.3 + bassAvg * 0.2;
-            layer.scale.set(scale, scale, 1);
-            
-            // Color shift based on amplitude and position
-            const hue = (0.05 + this.config.colorShift + t * 0.15 + amplitude * 0.1) % 1;
-            const brightness = 0.4 + amplitude * 0.6;
-            layer.material.color.setHSL(hue, 0.9, brightness);
-            
-            // Opacity pulse
-            layer.material.opacity = 0.6 + amplitude * 0.4;
-        });
-    }
-    
-    dispose() {
-        this.layers.forEach(layer => {
-            layer.geometry.dispose();
-            layer.material.dispose();
-            this.scene.remove(layer);
-        });
-        this.layers = [];
-    }
-}
-
-// Liquid Blur Waveform (Inspired by organic blurred shapes)
-class LiquidBlurWaveform {
-    constructor(scene, analyser) {
-        this.scene = scene;
-        this.analyser = analyser;
-        this.blobs = [];
-        this.time = 0;
-        
-        this.config = {
-            blobCount: 5,
-            size: 0.6,
-            fluidity: 2.0,
-            brightness: 2.5,
-            colorRange: 0.3
-        };
-        
-        this.create();
-    }
-    
-    create() {
-        for (let i = 0; i < this.config.blobCount; i++) {
-            // Create blob with high vertex count for smooth deformation
-            const geometry = new THREE.SphereGeometry(this.config.size, 32, 32);
-            
-            // Store original positions
-            const positions = geometry.attributes.position.array;
-            geometry.userData.originalPositions = new Float32Array(positions);
-            
-            const material = new THREE.MeshBasicMaterial({
-                color: new THREE.Color().setHSL(0.3 + i * 0.1, 1, 0.5),
-                transparent: true,
-                opacity: 0.7,
-                blending: THREE.AdditiveBlending
-            });
-            
-            const blob = new THREE.Mesh(geometry, material);
-            blob.userData = { 
-                index: i,
-                phase: i * Math.PI * 2 / this.config.blobCount
-            };
-            
-            this.blobs.push(blob);
-            this.scene.add(blob);
-        }
-    }
-    
-    update(dataArray) {
-        this.time += 0.015 * this.config.fluidity;
-        
-        const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
-        const bassAvg = dataArray.slice(0, Math.floor(dataArray.length * 0.15))
-            .reduce((a, b) => a + b, 0) / (dataArray.length * 0.15) / 255;
-        
-        this.blobs.forEach((blob, blobIdx) => {
-            const phase = blob.userData.phase;
-            
-            // Position blobs in organic pattern
-            const angle = this.time + phase;
-            const radius = 0.3 + avgAmplitude * 0.8;
-            blob.position.x = Math.cos(angle) * radius;
-            blob.position.y = Math.sin(angle) * radius * 0.7;
-            
-            // Deform geometry for liquid effect
-            const positions = blob.geometry.attributes.position.array;
-            const originalPositions = blob.geometry.userData.originalPositions;
-            
-            for (let i = 0; i < positions.length; i += 3) {
-                const idx = Math.floor((i / 3) / (positions.length / 3) * dataArray.length);
-                const amplitude = dataArray[idx] / 255;
-                
-                const x = originalPositions[i];
-                const y = originalPositions[i + 1];
-                const z = originalPositions[i + 2];
-                
-                // Create organic distortion
-                const distortion = Math.sin(this.time * 2 + x * 3) * 
-                                 Math.cos(this.time * 1.5 + y * 3) * 
-                                 amplitude * 0.3;
-                
-                positions[i] = x * (1 + distortion);
-                positions[i + 1] = y * (1 + distortion);
-                positions[i + 2] = z * (1 + distortion);
-            }
-            
-            blob.geometry.attributes.position.needsUpdate = true;
-            
-            // Scale with bass
-            const scale = 0.8 + bassAvg * 1.5 + avgAmplitude * 0.5;
-            blob.scale.set(scale, scale, scale);
-            
-            // Dynamic color
-            const hue = (0.25 + blobIdx * 0.08 + avgAmplitude * this.config.colorRange) % 1;
-            blob.material.color.setHSL(hue, 1, 0.5 * this.config.brightness);
-            blob.material.opacity = 0.5 + amplitude * 0.4;
-        });
-    }
-    
-    dispose() {
-        this.blobs.forEach(blob => {
-            blob.geometry.dispose();
-            blob.material.dispose();
-            this.scene.remove(blob);
-        });
-        this.blobs = [];
-    }
-}
-
-// Particle Morph Waveform (Inspired by dotted sphere with wave deformation)
+// Particle Morph Waveform
 class ParticleMorphWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
@@ -608,9 +449,7 @@ class ParticleMorphWaveform {
         const colors = new Float32Array(this.config.particleCount * 3);
         const sizes = new Float32Array(this.config.particleCount);
         
-        // Create sphere distribution
         for (let i = 0; i < this.config.particleCount; i++) {
-            // Fibonacci sphere distribution for even particle placement
             const phi = Math.acos(1 - 2 * (i + 0.5) / this.config.particleCount);
             const theta = Math.PI * (1 + Math.sqrt(5)) * i;
             
@@ -619,7 +458,6 @@ class ParticleMorphWaveform {
             positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
             positions[i * 3 + 2] = radius * Math.cos(phi);
             
-            // Color gradient
             const hue = (i / this.config.particleCount + 0.5) % 1;
             const color = new THREE.Color().setHSL(hue, 1, 0.5);
             colors[i * 3] = color.r;
@@ -664,11 +502,9 @@ class ParticleMorphWaveform {
             const y = originalPositions[i3 + 1];
             const z = originalPositions[i3 + 2];
             
-            // Get corresponding audio data
             const dataIdx = Math.floor((i / this.config.particleCount) * dataArray.length);
             const amplitude = dataArray[dataIdx] / 255;
             
-            // Create wave deformation
             const angle = Math.atan2(y, x);
             const wave1 = Math.sin(angle * 3 + this.time * 2) * amplitude * this.config.waveIntensity;
             const wave2 = Math.cos(angle * 5 - this.time * 1.5) * amplitude * this.config.waveIntensity;
@@ -682,7 +518,6 @@ class ParticleMorphWaveform {
             positions[i3 + 1] = y * scale;
             positions[i3 + 2] = z * scale;
             
-            // Dynamic colors
             const hue = ((i / this.config.particleCount) + 
                         this.time * this.config.colorCycle * 0.1 + 
                         amplitude * 0.2) % 1;
@@ -691,7 +526,6 @@ class ParticleMorphWaveform {
             colors[i3 + 1] = color.g * (1 + amplitude);
             colors[i3 + 2] = color.b * (1 + amplitude);
             
-            // Size variation
             sizes[i] = this.config.size * (0.5 + amplitude * 2 + avgAmplitude);
         }
         
@@ -699,7 +533,6 @@ class ParticleMorphWaveform {
         this.particles.geometry.attributes.color.needsUpdate = true;
         this.particles.geometry.attributes.size.needsUpdate = true;
         
-        // Slow rotation
         this.particles.rotation.y += 0.002;
         this.particles.rotation.x = Math.sin(this.time * 0.5) * 0.2;
     }
@@ -713,7 +546,7 @@ class ParticleMorphWaveform {
     }
 }
 
-// Echo Ripples Waveform (Inspired by concentric circles and echo effects)
+// Echo Ripples Waveform
 class EchoRipplesWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
@@ -789,22 +622,18 @@ class EchoRipplesWaveform {
             const colors = ripple.geometry.attributes.color.array;
             const segments = positions.length / 3 - 1;
             
-            // Expand ripple outward with echo effect
             const progress = ((this.time + ripple.userData.phase) % (Math.PI * 2)) / (Math.PI * 2);
             const radius = progress * this.config.maxRadius;
             
-            // Opacity fades as ripple expands
             const opacity = 1 - progress;
             ripple.material.opacity = opacity * 0.9;
             
             for (let i = 0; i <= segments; i++) {
                 const angle = (i / segments) * Math.PI * 2;
                 
-                // Get audio data for this segment
                 const dataIdx = Math.floor((i / segments) * dataArray.length);
                 const amplitude = (dataArray[dataIdx] / 255) * this.config.echoIntensity;
                 
-                // Create echo distortion (multiple overlapping waves)
                 const distortion = Math.sin(angle * 3 - this.time * 3) * amplitude * 0.2 +
                                  Math.sin(angle * 5 + this.time * 2) * amplitude * 0.15 +
                                  bassAvg * 0.3;
@@ -814,7 +643,6 @@ class EchoRipplesWaveform {
                 positions[i * 3] = Math.cos(angle) * finalRadius;
                 positions[i * 3 + 1] = Math.sin(angle) * finalRadius;
                 
-                // Color shifts with position and audio
                 const hue = (idx / this.config.rippleCount + 
                            (i / segments) * 0.3 + 
                            amplitude * 0.2 + 
@@ -830,7 +658,6 @@ class EchoRipplesWaveform {
             ripple.geometry.attributes.position.needsUpdate = true;
             ripple.geometry.attributes.color.needsUpdate = true;
             
-            // Subtle rotation for moiré effect
             ripple.rotation.z = this.time * 0.1;
         });
     }
