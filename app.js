@@ -30,12 +30,12 @@ class AudioVisualizer {
         
         this.init();
         this.setupEventListeners();
-        this.updateCanvasSize();
     }
     
     init() {
         this.setupThreeJS();
         this.setupPostProcessing();
+        this.updateCanvasSize();
     }
     
     updateCanvasSize() {
@@ -53,13 +53,17 @@ class AudioVisualizer {
         
         let displayWidth, displayHeight;
         
+        // Usar 85% del espacio disponible para que se vea más grande
+        const maxWidth = containerWidth * 0.85;
+        const maxHeight = containerHeight * 0.85;
+        
         if (containerRatio > aspectRatio) {
             // Container es más ancho - limitar por altura
-            displayHeight = containerHeight;
+            displayHeight = maxHeight;
             displayWidth = displayHeight * aspectRatio;
         } else {
             // Container es más alto - limitar por ancho
-            displayWidth = containerWidth;
+            displayWidth = maxWidth;
             displayHeight = displayWidth / aspectRatio;
         }
         
@@ -67,6 +71,13 @@ class AudioVisualizer {
         this.canvas.height = displayHeight;
         this.canvas.style.width = displayWidth + 'px';
         this.canvas.style.height = displayHeight + 'px';
+        
+        if (this.renderer) {
+            this.renderer.setSize(displayWidth, displayHeight);
+        }
+        if (this.composer) {
+            this.composer.setSize(displayWidth, displayHeight);
+        }
     }
     
     setupThreeJS() {
@@ -85,8 +96,7 @@ class AudioVisualizer {
             antialias: true,
             preserveDrawingBuffer: true
         });
-        this.renderer.setSize(this.canvas.width, this.canvas.height);
-        this.renderer.setPixelRatio(1);
+        this.renderer.setPixelRatio(window.devicePixelRatio);
     }
     
     setupPostProcessing() {
@@ -118,8 +128,6 @@ class AudioVisualizer {
         // Resize listener
         window.addEventListener('resize', () => {
             this.updateCanvasSize();
-            this.renderer.setSize(this.canvas.width, this.canvas.height);
-            this.composer.setSize(this.canvas.width, this.canvas.height);
             
             const aspect = this.exportWidth / this.exportHeight;
             this.camera.aspect = aspect;
@@ -207,9 +215,6 @@ class AudioVisualizer {
         const aspect = this.exportWidth / this.exportHeight;
         this.camera.aspect = aspect;
         this.camera.updateProjectionMatrix();
-        
-        this.renderer.setSize(this.canvas.width, this.canvas.height);
-        this.composer.setSize(this.canvas.width, this.canvas.height);
         
         if (this.currentWaveform) {
             const waveformType = document.getElementById('waveformType').value;
@@ -480,6 +485,8 @@ class ParticleMorphWaveform {
     }
     
     update(dataArray) {
+        if (!dataArray || dataArray.length === 0) return;
+        
         this.time += 0.01 * this.config.morphSpeed;
         
         const positions = this.particles.geometry.attributes.position.array;
@@ -539,7 +546,7 @@ class ParticleMorphWaveform {
     }
 }
 
-// Echo Ripples Waveform
+// Echo Ripples Waveform - CORREGIDO para evitar NaN
 class EchoRipplesWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
@@ -594,8 +601,7 @@ class EchoRipplesWaveform {
             const ripple = new THREE.LineLoop(geometry, material);
             ripple.userData = { 
                 index: i,
-                phase: (i / this.config.rippleCount) * Math.PI * 2,
-                baseRadius: 0.1
+                phase: (i / this.config.rippleCount) * Math.PI * 2
             };
             
             this.ripples.push(ripple);
@@ -604,37 +610,45 @@ class EchoRipplesWaveform {
     }
     
     update(dataArray) {
+        if (!dataArray || dataArray.length === 0) return;
+        
         this.time += 0.02 * this.config.speed;
         
         const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
-        const bassAvg = dataArray.slice(0, Math.floor(dataArray.length * 0.2))
-            .reduce((a, b) => a + b, 0) / (dataArray.length * 0.2) / 255;
+        const bassData = dataArray.slice(0, Math.floor(dataArray.length * 0.2));
+        const bassAvg = bassData.reduce((a, b) => a + b, 0) / bassData.length / 255;
         
         this.ripples.forEach((ripple, idx) => {
             const positions = ripple.geometry.attributes.position.array;
             const colors = ripple.geometry.attributes.color.array;
-            const segments = positions.length / 3 - 1;
+            const segments = Math.floor(positions.length / 3) - 1;
             
             const progress = ((this.time + ripple.userData.phase) % (Math.PI * 2)) / (Math.PI * 2);
             const radius = progress * this.config.maxRadius;
             
             const opacity = 1 - progress;
-            ripple.material.opacity = opacity * 0.9;
+            ripple.material.opacity = Math.max(0, Math.min(1, opacity * 0.9));
             
             for (let i = 0; i <= segments; i++) {
                 const angle = (i / segments) * Math.PI * 2;
                 
-                const dataIdx = Math.floor((i / segments) * dataArray.length);
+                const dataIdx = Math.floor((i / segments) * (dataArray.length - 1));
                 const amplitude = (dataArray[dataIdx] / 255) * this.config.echoIntensity;
                 
-                const distortion = Math.sin(angle * 3 - this.time * 3) * amplitude * 0.2 +
-                                 Math.sin(angle * 5 + this.time * 2) * amplitude * 0.15 +
-                                 bassAvg * 0.3;
+                const distortion = 
+                    Math.sin(angle * 3 - this.time * 3) * amplitude * 0.2 +
+                    Math.sin(angle * 5 + this.time * 2) * amplitude * 0.15 +
+                    bassAvg * 0.3;
                 
-                const finalRadius = radius + distortion;
+                const finalRadius = Math.max(0.01, radius + distortion);
                 
-                positions[i * 3] = Math.cos(angle) * finalRadius;
-                positions[i * 3 + 1] = Math.sin(angle) * finalRadius;
+                const x = Math.cos(angle) * finalRadius;
+                const y = Math.sin(angle) * finalRadius;
+                
+                // Validar que no sean NaN
+                positions[i * 3] = isNaN(x) ? 0 : x;
+                positions[i * 3 + 1] = isNaN(y) ? 0 : y;
+                positions[i * 3 + 2] = 0;
                 
                 const hue = (idx / this.config.rippleCount + 
                            (i / segments) * 0.3 + 
