@@ -7,67 +7,83 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Audio Waveform Visualizer</h1>
-            <p>Carga un archivo MP3 y crea visualizaciones reactivas</p>
-        </header>
+    <div class="app-container">
+        <!-- Sidebar izquierdo -->
+        <aside class="sidebar">
+            <header class="sidebar-header">
+                <h1>Audio Waveform</h1>
+                <p>Visualizador reactivo</p>
+            </header>
 
-        <div class="controls-section">
-            <div class="file-input-wrapper">
-                <input type="file" id="audioFile" accept="audio/mp3,audio/mpeg">
-                <label for="audioFile">Seleccionar MP3</label>
+            <div class="control-section">
+                <h3>MEDIO</h3>
+                <div class="file-input-wrapper">
+                    <input type="file" id="audioFile" accept="audio/mp3,audio/mpeg">
+                    <label for="audioFile" class="btn-primary">Cargar MP3</label>
+                </div>
             </div>
 
-            <div class="format-selector">
-                <label>Formato:</label>
+            <div class="control-section">
+                <h3>FORMATO</h3>
                 <select id="formatSelect">
                     <option value="1080x1080">Cuadrado (1080x1080)</option>
                     <option value="1080x1350">Vertical (1080x1350)</option>
                 </select>
             </div>
 
-            <div class="waveform-selector">
-                <label>Tipo de Waveform:</label>
+            <div class="control-section">
+                <h3>TIPO DE WAVEFORM</h3>
                 <select id="waveformType">
-                    <option value="slitscan">Slit-Scan Sphere</option>
-                    <option value="liquidblur">Liquid Blur</option>
                     <option value="particlemorph">Particle Morph</option>
                     <option value="echoripples">Echo Ripples</option>
                 </select>
             </div>
-        </div>
 
-        <div class="config-section" id="configSection">
-            <h3>Configuración</h3>
-            <div class="config-grid" id="configControls"></div>
-        </div>
-
-        <div class="canvas-container">
-            <canvas id="visualizer"></canvas>
-        </div>
-
-        <div class="playback-controls">
-            <button id="playPauseBtn" disabled>
-                <span class="icon">▶</span>
-            </button>
-            <div class="timeline-container">
-                <input type="range" id="timeline" min="0" max="100" value="0" step="0.1" disabled>
-                <div class="time-display">
-                    <span id="currentTime">0:00</span>
-                    <span id="duration">0:00</span>
-                </div>
+            <div class="control-section">
+                <h3>EFECTOS</h3>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="bloomToggle">
+                    <span>Bloom (Glow)</span>
+                </label>
             </div>
-            <button id="recordBtn" disabled>
-                <span class="icon">⏺</span>
-                <span class="text">Grabar</span>
-            </button>
-        </div>
 
-        <div class="status" id="status"></div>
+            <div class="control-section" id="configSection">
+                <h3>CONFIGURACIÓN</h3>
+                <div id="configControls"></div>
+            </div>
+
+            <div class="control-section">
+                <h3>CONTROLES</h3>
+                <div class="playback-controls">
+                    <button id="playPauseBtn" class="btn-icon" disabled>
+                        <span class="icon">▶</span>
+                    </button>
+                    <div class="timeline-container">
+                        <input type="range" id="timeline" min="0" max="100" value="0" step="0.1" disabled>
+                        <div class="time-display">
+                            <span id="currentTime">0:00</span>
+                            <span id="duration">0:00</span>
+                        </div>
+                    </div>
+                </div>
+                <button id="recordBtn" class="btn-record" disabled>
+                    <span class="icon">⏺</span>
+                    <span class="text">Grabar Video</span>
+                </button>
+            </div>
+
+            <div class="status" id="status"></div>
+        </aside>
+
+        <!-- Canvas derecho -->
+        <main class="canvas-area">
+            <div class="canvas-wrapper">
+                <canvas id="visualizer"></canvas>
+            </div>
+        </main>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
