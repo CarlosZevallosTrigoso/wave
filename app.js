@@ -12,6 +12,7 @@ class AudioVisualizer {
         this.mediaRecorder = null;
         this.recordedChunks = [];
         this.canvasStream = null;
+        this.chunkCount = 0;
         
         this.scene = null;
         this.camera = null;
@@ -375,33 +376,41 @@ class AudioVisualizer {
             ...audioDestination.stream.getAudioTracks()
         ]);
         
-        // Intentar primero VP9 con alta calidad, si falla usar VP8
+        // Configuración optimizada para grabaciones largas
         let options;
-        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
-            options = {
-                mimeType: 'video/webm;codecs=vp9,opus',
-                videoBitsPerSecond: 8000000  // 8 Mbps para mejor calidad
-            };
-        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+            // VP8 es más rápido y estable que VP9 para grabaciones largas
             options = {
                 mimeType: 'video/webm;codecs=vp8,opus',
-                videoBitsPerSecond: 8000000
+                videoBitsPerSecond: 6000000  // 6 Mbps - balance entre calidad y tamaño
             };
         } else {
             options = {
-                videoBitsPerSecond: 8000000
+                videoBitsPerSecond: 6000000
             };
         }
         
         this.mediaRecorder = new MediaRecorder(combinedStream, options);
         
+        // Contador de chunks para diagnóstico
+        this.chunkCount = 0;
+        
         this.mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
+            if (event.data && event.data.size > 0) {
                 this.recordedChunks.push(event.data);
+                this.chunkCount++;
+                console.log('Chunk #' + this.chunkCount + ' - Tamaño: ' + (event.data.size / 1024 / 1024).toFixed(2) + ' MB');
             }
         };
         
+        this.mediaRecorder.onerror = (event) => {
+            console.error('MediaRecorder error:', event);
+            this.showStatus('Error en grabación: ' + event.error.name, 'error');
+        };
+        
         this.mediaRecorder.onstop = () => {
+            console.log('Grabación detenida. Total chunks: ' + this.chunkCount);
+            console.log('Tamaño total aproximado: ' + (this.recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0) / 1024 / 1024).toFixed(2) + ' MB');
             this.saveRecording();
             if (this.canvasStream) {
                 this.canvasStream.getTracks().forEach(track => track.stop());
@@ -409,9 +418,9 @@ class AudioVisualizer {
             }
         };
         
-        // Timeslice de 100ms para capturar más matices
-        // (no afecta fps, solo cómo se guardan los chunks)
-        this.mediaRecorder.start(100);
+        // Timeslice de 1000ms (1 segundo) - óptimo para grabaciones largas
+        // Captura todos los matices pero no satura la memoria
+        this.mediaRecorder.start(1000);
         this.isRecording = true;
         
         document.getElementById('recordBtn').classList.add('recording');
@@ -421,7 +430,8 @@ class AudioVisualizer {
             this.togglePlayPause();
         }
         
-        this.showStatus('Grabación iniciada - Alta calidad', 'success');
+        this.showStatus('Grabación iniciada', 'success');
+        console.log('Grabación iniciada - Codec: ' + options.mimeType);
     }
     
     stopRecording() {
@@ -437,7 +447,17 @@ class AudioVisualizer {
     }
     
     saveRecording() {
+        if (this.recordedChunks.length === 0) {
+            this.showStatus('Error: No hay datos para guardar', 'error');
+            console.error('No se grabaron chunks de video');
+            return;
+        }
+        
         const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+        const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+        
+        console.log('Guardando video - Chunks: ' + this.recordedChunks.length + ', Tamaño: ' + sizeMB + ' MB');
+        
         const url = URL.createObjectURL(blob);
         
         const a = document.createElement('a');
@@ -450,7 +470,7 @@ class AudioVisualizer {
             URL.revokeObjectURL(url);
         }, 100);
         
-        this.showStatus('Video guardado correctamente', 'success');
+        this.showStatus('Video guardado: ' + sizeMB + ' MB', 'success');
     }
     
     formatTime(seconds) {
