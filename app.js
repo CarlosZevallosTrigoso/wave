@@ -12,15 +12,18 @@ class AudioVisualizer {
         this.mediaRecorder = null;
         this.recordedChunks = [];
         
+        // Three.js
         this.scene = null;
         this.camera = null;
         this.renderer = null;
         this.currentWaveform = null;
         
+        // Post-processing
         this.composer = null;
         this.bloomPass = null;
         this.bloomEnabled = false;
         
+        // Format
         this.currentFormat = '1080x1080';
         this.exportWidth = 1080;
         this.exportHeight = 1080;
@@ -40,6 +43,7 @@ class AudioVisualizer {
         this.exportWidth = width;
         this.exportHeight = height;
         
+        // Calcular tamaño responsive manteniendo aspect ratio
         const wrapper = this.canvas.parentElement;
         const containerWidth = wrapper.clientWidth;
         const containerHeight = wrapper.clientHeight;
@@ -49,13 +53,16 @@ class AudioVisualizer {
         
         let displayWidth, displayHeight;
         
+        // Usar 85% del espacio disponible para que se vea más grande
         const maxWidth = containerWidth * 0.85;
         const maxHeight = containerHeight * 0.85;
         
         if (containerRatio > aspectRatio) {
+            // Container es más ancho - limitar por altura
             displayHeight = maxHeight;
             displayWidth = displayHeight * aspectRatio;
         } else {
+            // Container es más alto - limitar por ancho
             displayWidth = maxWidth;
             displayHeight = displayWidth / aspectRatio;
         }
@@ -74,13 +81,16 @@ class AudioVisualizer {
     }
     
     setupThreeJS() {
+        // Scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x000000);
         
+        // Camera
         const aspect = this.exportWidth / this.exportHeight;
         this.camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
         this.camera.position.z = 5;
         
+        // Renderer
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
             antialias: true,
@@ -90,6 +100,7 @@ class AudioVisualizer {
     }
     
     setupPostProcessing() {
+        // Usar versiones globales de Three.js
         this.composer = new THREE.EffectComposer(this.renderer);
         
         const renderPass = new THREE.RenderPass(this.scene, this.camera);
@@ -97,7 +108,9 @@ class AudioVisualizer {
         
         this.bloomPass = new THREE.UnrealBloomPass(
             new THREE.Vector2(this.canvas.width, this.canvas.height),
-            1.5, 0.4, 0.85
+            1.5,  // strength
+            0.4,  // radius
+            0.85  // threshold
         );
         this.bloomPass.enabled = false;
         this.composer.addPass(this.bloomPass);
@@ -112,8 +125,10 @@ class AudioVisualizer {
         document.getElementById('recordBtn').addEventListener('click', () => this.toggleRecording());
         document.getElementById('bloomToggle').addEventListener('change', (e) => this.toggleBloom(e.target.checked));
         
+        // Resize listener
         window.addEventListener('resize', () => {
             this.updateCanvasSize();
+            
             const aspect = this.exportWidth / this.exportHeight;
             this.camera.aspect = aspect;
             this.camera.updateProjectionMatrix();
@@ -162,6 +177,7 @@ class AudioVisualizer {
             this.analyser.connect(this.audioContext.destination);
             
             document.getElementById('duration').textContent = this.formatTime(this.audioElement.duration);
+            
             document.getElementById('playPauseBtn').disabled = false;
             document.getElementById('timeline').disabled = false;
             document.getElementById('recordBtn').disabled = false;
@@ -225,13 +241,10 @@ class AudioVisualizer {
             case 'gasstar':
                 this.currentWaveform = new GasStarWaveform(this.scene, this.analyser);
                 break;
-            case 'ghost':
-                this.currentWaveform = new GhostWaveform(this.scene, this.analyser);
-                break;
         }
         
         this.setupConfigUI();
-        this.showStatus(\`Waveform: \${type}\`, 'success');
+        this.showStatus('Waveform: ' + type, 'success');
     }
     
     setupConfigUI() {
@@ -248,6 +261,7 @@ class AudioVisualizer {
             label.textContent = this.formatConfigLabel(key);
             item.appendChild(label);
             
+            // Si es un color (string que empieza con #)
             if (typeof value === 'string' && value.startsWith('#')) {
                 const input = document.createElement('input');
                 input.type = 'color';
@@ -266,32 +280,43 @@ class AudioVisualizer {
                 
                 item.appendChild(input);
             }
+            // Si es un número
             else if (typeof value === 'number') {
                 const input = document.createElement('input');
                 input.type = 'range';
                 input.min = key === 'particleCount' ? 1000 : 
+                            key === 'segments' ? 32 : 
                             key === 'waveCount' ? 3 :
+                            key === 'lineWidth' ? 0.5 :
                             key === 'objectScale' ? 0.3 :
                             key.includes('opacity') ? 0 : 0.1;
-                input.max = key === 'particleCount' ? 20000 : 
+                input.max = key === 'particleCount' ? 10000 : 
+                            key === 'segments' ? 256 : 
                             key === 'waveCount' ? 20 :
+                            key === 'lineWidth' ? 10 :
                             key === 'objectScale' ? 3 :
-                            key.includes('opacity') ? 1 : 5;
-                input.step = key === 'particleCount' ? 500 : 
-                             key === 'waveCount' ? 1 :
-                             key === 'objectScale' ? 0.1 : 0.1;
+                            key.includes('opacity') ? 1 :
+                            key.includes('radius') || key.includes('Size') ? 3 : 10;
+                input.step = key === 'particleCount' ? 100 : 
+                             key === 'segments' || key === 'waveCount' ? 1 :
+                             key === 'lineWidth' || key === 'objectScale' ? 0.1 : 0.1;
                 input.value = value;
                 
                 const valueDisplay = document.createElement('span');
-                valueDisplay.textContent = (key === 'particleCount' || key === 'waveCount') ? value : value.toFixed(1);
+                valueDisplay.textContent = (key === 'particleCount' || key === 'segments' || key === 'waveCount') ? value : value.toFixed(1);
                 
                 input.addEventListener('input', (e) => {
                     const val = parseFloat(e.target.value);
                     this.currentWaveform.config[key] = val;
-                    valueDisplay.textContent = (key === 'particleCount' || key === 'waveCount') ? val : val.toFixed(1);
+                    valueDisplay.textContent = (key === 'particleCount' || key === 'segments' || key === 'waveCount') ? val : val.toFixed(1);
                     
-                    if (this.currentWaveform.updateConfig) {
-                        this.currentWaveform.updateConfig();
+                    // Actualizar material si existe el método
+                    if (this.currentWaveform.updateMaterial) {
+                        this.currentWaveform.updateMaterial();
+                    }
+                    // Actualizar escala si es objectScale
+                    if (key === 'objectScale' && this.currentWaveform.updateScale) {
+                        this.currentWaveform.updateScale();
                     }
                 });
                 
@@ -347,6 +372,7 @@ class AudioVisualizer {
             this.currentWaveform.update(this.dataArray);
         }
         
+        // Render con o sin post-processing
         if (this.bloomEnabled) {
             this.composer.render();
         } else {
@@ -422,7 +448,7 @@ class AudioVisualizer {
         
         const a = document.createElement('a');
         a.href = url;
-        a.download = \`waveform_\${Date.now()}.webm\`;
+        a.download = 'waveform_' + Date.now() + '.webm';
         a.click();
         
         URL.revokeObjectURL(url);
@@ -433,7 +459,7 @@ class AudioVisualizer {
     formatTime(seconds) {
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
-        return \`\${mins}:\${secs.toString().padStart(2, '0')}\`;
+        return mins + ':' + secs.toString().padStart(2, '0');
     }
     
     showStatus(message, type = '') {
@@ -453,6 +479,7 @@ class ParticleMorphWaveform {
         
         this.config = {
             particleCount: 8000,
+            particleSize: 0.02,
             objectScale: 1.0,
             morphSpeed: 1.0,
             waveIntensity: 1.5,
@@ -469,6 +496,7 @@ class ParticleMorphWaveform {
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(this.config.particleCount * 3);
         const colors = new Float32Array(this.config.particleCount * 3);
+        const sizes = new Float32Array(this.config.particleCount);
         
         for (let i = 0; i < this.config.particleCount; i++) {
             const phi = Math.acos(1 - 2 * (i + 0.5) / this.config.particleCount);
@@ -484,29 +512,40 @@ class ParticleMorphWaveform {
             colors[i * 3] = color.r;
             colors[i * 3 + 1] = color.g;
             colors[i * 3 + 2] = color.b;
+            
+            sizes[i] = this.config.particleSize;
         }
         
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        
         geometry.userData.originalPositions = new Float32Array(positions);
         
         const material = new THREE.PointsMaterial({
-            size: 0.02,
+            size: this.config.particleSize,
             vertexColors: true,
             transparent: true,
             opacity: this.config.opacity,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
         });
         
         this.particles = new THREE.Points(geometry, material);
         this.scene.add(this.particles);
-        this.updateConfig();
+        this.updateScale();
     }
     
-    updateConfig() {
+    updateMaterial() {
+        if (this.particles && this.particles.material) {
+            this.particles.material.opacity = this.config.opacity;
+            this.particles.material.size = this.config.particleSize;
+        }
+    }
+    
+    updateScale() {
         if (this.particles) {
             this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
-            this.particles.material.opacity = this.config.opacity;
         }
     }
     
@@ -518,6 +557,7 @@ class ParticleMorphWaveform {
         const positions = this.particles.geometry.attributes.position.array;
         const originalPositions = this.particles.geometry.userData.originalPositions;
         const colors = this.particles.geometry.attributes.color.array;
+        const sizes = this.particles.geometry.attributes.size.array;
         
         const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
         
@@ -550,10 +590,13 @@ class ParticleMorphWaveform {
             colors[i3] = color.r * (1 + amplitude);
             colors[i3 + 1] = color.g * (1 + amplitude);
             colors[i3 + 2] = color.b * (1 + amplitude);
+            
+            sizes[i] = this.config.particleSize * (0.5 + amplitude * 2 + avgAmplitude);
         }
         
         this.particles.geometry.attributes.position.needsUpdate = true;
         this.particles.geometry.attributes.color.needsUpdate = true;
+        this.particles.geometry.attributes.size.needsUpdate = true;
     }
     
     dispose() {
@@ -565,7 +608,7 @@ class ParticleMorphWaveform {
     }
 }
 
-// Multi Wave Waveform
+// Multi Wave Waveform - Múltiples líneas ondulantes
 class MultiWaveWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
@@ -575,10 +618,12 @@ class MultiWaveWaveform {
         
         this.config = {
             waveCount: 12,
+            segments: 128,
             objectScale: 1.0,
             waveIntensity: 1.5,
             spacing: 0.15,
             speed: 1.0,
+            lineWidth: 2.0,
             opacity: 0.8,
             lineColor: '#ffffff',
             backgroundColor: '#000000'
@@ -589,6 +634,7 @@ class MultiWaveWaveform {
     }
     
     create() {
+        // Limpiar waves anteriores si existen
         this.waves.forEach(wave => {
             wave.geometry.dispose();
             wave.material.dispose();
@@ -596,61 +642,80 @@ class MultiWaveWaveform {
         });
         this.waves = [];
         
-        const segments = 128;
-        
         for (let i = 0; i < this.config.waveCount; i++) {
             const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(segments * 3);
+            const positions = new Float32Array(this.config.segments * 3);
+            const colors = new Float32Array(this.config.segments * 3);
             
             const yPos = (i - this.config.waveCount / 2) * this.config.spacing;
             
-            for (let j = 0; j < segments; j++) {
-                const x = (j / (segments - 1)) * 4 - 2;
+            // Convertir color hex a RGB
+            const color = new THREE.Color(this.config.lineColor);
+            
+            for (let j = 0; j < this.config.segments; j++) {
+                const x = (j / (this.config.segments - 1)) * 4 - 2;
                 positions[j * 3] = x;
                 positions[j * 3 + 1] = yPos;
                 positions[j * 3 + 2] = 0;
+                
+                colors[j * 3] = color.r;
+                colors[j * 3 + 1] = color.g;
+                colors[j * 3 + 2] = color.b;
             }
             
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             
-            const color = new THREE.Color(this.config.lineColor);
             const material = new THREE.LineBasicMaterial({
-                color: color,
+                vertexColors: true,
                 transparent: true,
-                opacity: this.config.opacity
+                opacity: this.config.opacity,
+                linewidth: this.config.lineWidth
             });
             
             const wave = new THREE.Line(geometry, material);
             wave.userData = { 
                 index: i,
                 baseY: yPos,
-                segments: segments
+                originalPositions: new Float32Array(positions)
             };
             
             this.waves.push(wave);
             this.scene.add(wave);
         }
         
-        this.updateConfig();
+        this.updateScale();
     }
     
     updateColors() {
         const color = new THREE.Color(this.config.lineColor);
         this.waves.forEach(wave => {
-            wave.material.color = color;
+            const colors = wave.geometry.attributes.color.array;
+            for (let i = 0; i < this.config.segments; i++) {
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+            wave.geometry.attributes.color.needsUpdate = true;
         });
     }
     
-    updateConfig() {
-        if (this.waves.length !== this.config.waveCount) {
-            this.create();
-            return;
-        }
+    updateMaterial() {
+        // Recrear si cambia waveCount o segments
+        const needsRecreate = this.waves.length !== this.config.waveCount;
         
-        this.waves.forEach((wave, i) => {
-            const newYPos = (i - this.config.waveCount / 2) * this.config.spacing;
-            wave.userData.baseY = newYPos;
-            wave.material.opacity = this.config.opacity;
+        if (needsRecreate) {
+            this.create();
+        } else {
+            this.waves.forEach(wave => {
+                wave.material.opacity = this.config.opacity;
+                wave.material.linewidth = this.config.lineWidth;
+            });
+        }
+    }
+    
+    updateScale() {
+        this.waves.forEach(wave => {
             wave.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
         });
     }
@@ -662,24 +727,24 @@ class MultiWaveWaveform {
         
         this.waves.forEach((wave, waveIdx) => {
             const positions = wave.geometry.attributes.position.array;
-            const segments = wave.userData.segments;
-            const baseY = wave.userData.baseY;
+            const originalPositions = wave.userData.originalPositions;
             
-            for (let i = 0; i < segments; i++) {
-                const x = (i / (segments - 1)) * 4 - 2;
+            for (let i = 0; i < this.config.segments; i++) {
+                const x = originalPositions[i * 3];
+                const baseY = wave.userData.baseY;
                 
-                const dataIdx = Math.floor((i / segments) * dataArray.length);
+                // Mapear posición X al array de datos de audio
+                const dataIdx = Math.floor((i / this.config.segments) * dataArray.length);
                 const amplitude = dataArray[dataIdx] / 255;
                 
+                // Crear ondas con diferentes fases
                 const wave1 = Math.sin(x * 2 + this.time + waveIdx * 0.5) * amplitude;
                 const wave2 = Math.sin(x * 3 - this.time * 0.7 + waveIdx * 0.3) * amplitude * 0.5;
                 const wave3 = Math.sin(x * 5 + this.time * 1.3 + waveIdx * 0.2) * amplitude * 0.3;
                 
                 const displacement = (wave1 + wave2 + wave3) * this.config.waveIntensity * 0.3;
                 
-                positions[i * 3] = x;
                 positions[i * 3 + 1] = baseY + displacement;
-                positions[i * 3 + 2] = 0;
             }
             
             wave.geometry.attributes.position.needsUpdate = true;
@@ -696,7 +761,7 @@ class MultiWaveWaveform {
     }
 }
 
-// Particle Sphere Waveform
+// Particle Sphere Waveform - Esfera de partículas blancas
 class ParticleSphereWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
@@ -706,6 +771,8 @@ class ParticleSphereWaveform {
         
         this.config = {
             particleCount: 5000,
+            particleSize: 0.03,
+            sphereRadius: 1.2,
             objectScale: 1.0,
             expansionIntensity: 1.5,
             opacity: 0.9,
@@ -720,32 +787,40 @@ class ParticleSphereWaveform {
     create() {
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(this.config.particleCount * 3);
+        const sizes = new Float32Array(this.config.particleCount);
         
+        // Distribución uniforme en una esfera usando algoritmo de Fibonacci
         for (let i = 0; i < this.config.particleCount; i++) {
             const phi = Math.acos(1 - 2 * (i + 0.5) / this.config.particleCount);
             const theta = Math.PI * (1 + Math.sqrt(5)) * i;
             
-            const radius = 1.2;
+            const radius = this.config.sphereRadius;
             positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
             positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
             positions[i * 3 + 2] = radius * Math.cos(phi);
+            
+            // Variar ligeramente el tamaño para efecto más orgánico
+            sizes[i] = this.config.particleSize * (0.5 + Math.random() * 0.5);
         }
         
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        
         geometry.userData.originalPositions = new Float32Array(positions);
         
         const color = new THREE.Color(this.config.particleColor);
         const material = new THREE.PointsMaterial({
-            size: 0.03,
+            size: this.config.particleSize,
             color: color,
             transparent: true,
             opacity: this.config.opacity,
-            blending: THREE.AdditiveBlending
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true
         });
         
         this.particles = new THREE.Points(geometry, material);
         this.scene.add(this.particles);
-        this.updateConfig();
+        this.updateScale();
     }
     
     updateColors() {
@@ -754,10 +829,16 @@ class ParticleSphereWaveform {
         }
     }
     
-    updateConfig() {
+    updateMaterial() {
+        if (this.particles && this.particles.material) {
+            this.particles.material.opacity = this.config.opacity;
+            this.particles.material.size = this.config.particleSize;
+        }
+    }
+    
+    updateScale() {
         if (this.particles) {
             this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
-            this.particles.material.opacity = this.config.opacity;
         }
     }
     
@@ -768,6 +849,7 @@ class ParticleSphereWaveform {
         
         const positions = this.particles.geometry.attributes.position.array;
         const originalPositions = this.particles.geometry.userData.originalPositions;
+        const sizes = this.particles.geometry.attributes.size.array;
         
         const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
         const bassData = dataArray.slice(0, Math.floor(dataArray.length * 0.2));
@@ -779,9 +861,11 @@ class ParticleSphereWaveform {
             const y = originalPositions[i3 + 1];
             const z = originalPositions[i3 + 2];
             
+            // Mapear partícula al espectro de audio
             const dataIdx = Math.floor((i / this.config.particleCount) * dataArray.length);
             const amplitude = dataArray[dataIdx] / 255;
             
+            // Expansión radial basada en audio
             const distance = Math.sqrt(x * x + y * y + z * z);
             const expansion = amplitude * this.config.expansionIntensity * 0.3 + bassAvg * 0.2;
             const newDistance = distance + expansion;
@@ -790,9 +874,13 @@ class ParticleSphereWaveform {
             positions[i3] = x * scale;
             positions[i3 + 1] = y * scale;
             positions[i3 + 2] = z * scale;
+            
+            // Variar tamaño de partículas con el audio
+            sizes[i] = this.config.particleSize * (0.8 + amplitude * 1.5 + avgAmplitude * 0.5);
         }
         
         this.particles.geometry.attributes.position.needsUpdate = true;
+        this.particles.geometry.attributes.size.needsUpdate = true;
     }
     
     dispose() {
@@ -804,7 +892,7 @@ class ParticleSphereWaveform {
     }
 }
 
-// Gas Star - SUPER DENSA Y VISIBLE
+// Gas Star Waveform - Estrella gaseosa espectral
 class GasStarWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
@@ -813,11 +901,14 @@ class GasStarWaveform {
         this.time = 0;
         
         this.config = {
-            particleCount: 50000,
-            objectScale: 0.8,
-            glowIntensity: 1.5,
+            particleCount: 3000,
+            particleSize: 0.015,
+            coreRadius: 0.15,
+            atmosphereRadius: 0.5,
+            objectScale: 1.0,
+            glowIntensity: 0.8,
             pulseSpeed: 1.0,
-            opacity: 1.0,
+            opacity: 0.7,
             coreColor: '#ffffff',
             glowColor: '#88ccff',
             backgroundColor: '#000000'
@@ -831,19 +922,20 @@ class GasStarWaveform {
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(this.config.particleCount * 3);
         const colors = new Float32Array(this.config.particleCount * 3);
+        const sizes = new Float32Array(this.config.particleCount);
         const alphas = new Float32Array(this.config.particleCount);
         
         const coreColor = new THREE.Color(this.config.coreColor);
         const glowColor = new THREE.Color(this.config.glowColor);
         
-        const coreRadius = 0.3;
-        const atmosphereRadius = 0.8;
-        
         for (let i = 0; i < this.config.particleCount; i++) {
+            // Distribución con mayor densidad en el centro
             const r = Math.random();
-            const radius = r < 0.8 ? 
-                coreRadius * Math.pow(Math.random(), 0.2) :
-                coreRadius + (atmosphereRadius - coreRadius) * Math.pow(Math.random(), 1.2);
+            const radius = r < 0.4 ? 
+                // 40% en el núcleo
+                this.config.coreRadius * Math.pow(Math.random(), 0.5) :
+                // 60% en la atmósfera
+                this.config.coreRadius + (this.config.atmosphereRadius - this.config.coreRadius) * Math.pow(Math.random(), 2);
             
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(2 * Math.random() - 1);
@@ -852,7 +944,8 @@ class GasStarWaveform {
             positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
             positions[i * 3 + 2] = radius * Math.cos(phi);
             
-            const distanceFactor = radius / atmosphereRadius;
+            // Color: blanco en el centro, azulado hacia afuera
+            const distanceFactor = radius / this.config.atmosphereRadius;
             const color = new THREE.Color();
             color.lerpColors(coreColor, glowColor, distanceFactor);
             
@@ -860,46 +953,60 @@ class GasStarWaveform {
             colors[i * 3 + 1] = color.g;
             colors[i * 3 + 2] = color.b;
             
-            alphas[i] = (1 - distanceFactor * 0.6) * this.config.opacity;
+            // Tamaño variable: más grande en el centro
+            const sizeFactor = 1 - distanceFactor * 0.7;
+            sizes[i] = this.config.particleSize * sizeFactor * (0.8 + Math.random() * 0.4);
+            
+            // Opacidad: más opaco en el centro
+            alphas[i] = (1 - distanceFactor * 0.8) * this.config.opacity;
         }
         
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute('customAlpha', new THREE.BufferAttribute(alphas, 1));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
         
         geometry.userData.originalPositions = new Float32Array(positions);
+        geometry.userData.baseSizes = new Float32Array(sizes);
         geometry.userData.baseAlphas = new Float32Array(alphas);
         
+        // Shader personalizado para opacidad por partícula
         const material = new THREE.ShaderMaterial({
             uniforms: {
-                time: { value: 0 }
+                pointTexture: { value: null }
             },
-            vertexShader: \`
-                attribute float customAlpha;
+            vertexShader: `
+                attribute float size;
+                attribute float alpha;
                 attribute vec3 color;
                 varying vec3 vColor;
                 varying float vAlpha;
                 
                 void main() {
                     vColor = color;
-                    vAlpha = customAlpha;
+                    vAlpha = alpha;
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    gl_PointSize = 3.0 * (300.0 / -mvPosition.z);
+                    gl_PointSize = size * (300.0 / -mvPosition.z);
                     gl_Position = projectionMatrix * mvPosition;
                 }
-            \`,
-            fragmentShader: \`
+            `,
+            fragmentShader: `
                 varying vec3 vColor;
                 varying float vAlpha;
                 
                 void main() {
+                    // Crear punto circular suave
                     vec2 center = gl_PointCoord - vec2(0.5);
                     float dist = length(center);
+                    
                     if (dist > 0.5) discard;
+                    
+                    // Gradiente radial suave
                     float alpha = (1.0 - dist * 2.0) * vAlpha;
+                    
                     gl_FragColor = vec4(vColor, alpha);
                 }
-            \`,
+            `,
             transparent: true,
             blending: THREE.AdditiveBlending,
             depthWrite: false
@@ -907,7 +1014,7 @@ class GasStarWaveform {
         
         this.particles = new THREE.Points(geometry, material);
         this.scene.add(this.particles);
-        this.updateConfig();
+        this.updateScale();
     }
     
     updateColors() {
@@ -922,7 +1029,7 @@ class GasStarWaveform {
                 const y = positions[i * 3 + 1];
                 const z = positions[i * 3 + 2];
                 const radius = Math.sqrt(x * x + y * y + z * z);
-                const distanceFactor = radius / 0.8;
+                const distanceFactor = radius / this.config.atmosphereRadius;
                 
                 const color = new THREE.Color();
                 color.lerpColors(coreColor, glowColor, distanceFactor);
@@ -936,17 +1043,22 @@ class GasStarWaveform {
         }
     }
     
-    updateConfig() {
+    updateMaterial() {
         if (this.particles) {
-            this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
-            
-            const alphas = this.particles.geometry.attributes.customAlpha.array;
+            const alphas = this.particles.geometry.attributes.alpha.array;
             const baseAlphas = this.particles.geometry.userData.baseAlphas;
             
             for (let i = 0; i < this.config.particleCount; i++) {
-                alphas[i] = baseAlphas[i] * this.config.opacity;
+                alphas[i] = baseAlphas[i] * (this.config.opacity / 0.7);
             }
-            this.particles.geometry.attributes.customAlpha.needsUpdate = true;
+            
+            this.particles.geometry.attributes.alpha.needsUpdate = true;
+        }
+    }
+    
+    updateScale() {
+        if (this.particles) {
+            this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
         }
     }
     
@@ -957,12 +1069,18 @@ class GasStarWaveform {
         
         const positions = this.particles.geometry.attributes.position.array;
         const originalPositions = this.particles.geometry.userData.originalPositions;
+        const sizes = this.particles.geometry.attributes.size.array;
+        const baseSizes = this.particles.geometry.userData.baseSizes;
+        const alphas = this.particles.geometry.attributes.alpha.array;
+        const baseAlphas = this.particles.geometry.userData.baseAlphas;
         
+        // Calcular amplitud promedio y de bajos
         const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
         const bassData = dataArray.slice(0, Math.floor(dataArray.length * 0.15));
         const bassAvg = bassData.reduce((a, b) => a + b, 0) / bassData.length / 255;
         
-        const pulse = Math.sin(this.time * 3) * 0.03 + bassAvg * 0.1;
+        // Pulso sutil basado en el bass
+        const pulse = Math.sin(this.time * 3) * 0.03 + bassAvg * 0.08;
         
         for (let i = 0; i < this.config.particleCount; i++) {
             const i3 = i * 3;
@@ -971,22 +1089,31 @@ class GasStarWaveform {
             const z = originalPositions[i3 + 2];
             
             const radius = Math.sqrt(x * x + y * y + z * z);
-            const expansion = pulse * this.config.glowIntensity * 0.2;
+            const distanceFactor = radius / this.config.atmosphereRadius;
+            
+            // Expansión sutil
+            const expansion = pulse * this.config.glowIntensity * (1 - distanceFactor * 0.5);
             const newRadius = radius * (1 + expansion);
             const scale = newRadius / radius;
             
             positions[i3] = x * scale;
             positions[i3 + 1] = y * scale;
             positions[i3 + 2] = z * scale;
+            
+            // Variación sutil en tamaño
+            sizes[i] = baseSizes[i] * (1 + avgAmplitude * 0.3 + pulse * 0.5);
+            
+            // Variación sutil en opacidad con brillo
+            alphas[i] = baseAlphas[i] * (1 + avgAmplitude * 0.4);
         }
         
         this.particles.geometry.attributes.position.needsUpdate = true;
+        this.particles.geometry.attributes.size.needsUpdate = true;
+        this.particles.geometry.attributes.alpha.needsUpdate = true;
+        
+        // Rotación muy lenta para efecto orgánico
         this.particles.rotation.y += 0.0003;
         this.particles.rotation.x += 0.0002;
-        
-        if (this.particles.material.uniforms) {
-            this.particles.material.uniforms.time.value = this.time;
-        }
     }
     
     dispose() {
@@ -998,151 +1125,5 @@ class GasStarWaveform {
     }
 }
 
-// Ghost - SUPER VISIBLE
-class GhostWaveform {
-    constructor(scene, analyser) {
-        this.scene = scene;
-        this.analyser = analyser;
-        this.particles = null;
-        this.time = 0;
-        
-        this.config = {
-            particleCount: 5000,
-            objectScale: 1.5,
-            flowSpeed: 0.5,
-            fadeIntensity: 1.0,
-            opacity: 0.9,
-            ghostColor: '#ffffff',
-            backgroundColor: '#000000'
-        };
-        
-        this.create();
-        this.scene.background = new THREE.Color(this.config.backgroundColor);
-    }
-    
-    create() {
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(this.config.particleCount * 3);
-        const phases = new Float32Array(this.config.particleCount);
-        
-        for (let i = 0; i < this.config.particleCount; i++) {
-            const x = (Math.random() - 0.5) * 2;
-            const y = (Math.random() - 0.5) * 2;
-            const z = (Math.random() - 0.5) * 0.5;
-            
-            positions[i * 3] = x;
-            positions[i * 3 + 1] = y;
-            positions[i * 3 + 2] = z;
-            
-            phases[i] = Math.random() * Math.PI * 2;
-        }
-        
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
-        geometry.userData.originalPositions = new Float32Array(positions);
-        
-        const color = new THREE.Color(this.config.ghostColor);
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                time: { value: 0 },
-                opacity: { value: this.config.opacity },
-                color: { value: color },
-                fadeIntensity: { value: this.config.fadeIntensity }
-            },
-            vertexShader: \`
-                uniform float time;
-                uniform float fadeIntensity;
-                attribute float phase;
-                varying float vAlpha;
-                
-                void main() {
-                    vAlpha = (sin(time * 0.5 + phase) * 0.5 + 0.5) * fadeIntensity;
-                    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                    gl_PointSize = 4.0 * (200.0 / -mvPosition.z);
-                    gl_Position = projectionMatrix * mvPosition;
-                }
-            \`,
-            fragmentShader: \`
-                uniform vec3 color;
-                uniform float opacity;
-                varying float vAlpha;
-                
-                void main() {
-                    vec2 center = gl_PointCoord - vec2(0.5);
-                    float dist = length(center);
-                    if (dist > 0.5) discard;
-                    float alpha = (1.0 - dist * 2.0) * vAlpha * opacity;
-                    gl_FragColor = vec4(color, alpha);
-                }
-            \`,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false
-        });
-        
-        this.particles = new THREE.Points(geometry, material);
-        this.scene.add(this.particles);
-        this.updateConfig();
-    }
-    
-    updateColors() {
-        if (this.particles && this.particles.material) {
-            this.particles.material.uniforms.color.value = new THREE.Color(this.config.ghostColor);
-        }
-    }
-    
-    updateConfig() {
-        if (this.particles) {
-            this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
-            if (this.particles.material.uniforms) {
-                this.particles.material.uniforms.opacity.value = this.config.opacity;
-                this.particles.material.uniforms.fadeIntensity.value = this.config.fadeIntensity;
-            }
-        }
-    }
-    
-    update(dataArray) {
-        if (!dataArray || dataArray.length === 0) return;
-        
-        this.time += 0.01 * this.config.flowSpeed;
-        
-        const positions = this.particles.geometry.attributes.position.array;
-        const originalPositions = this.particles.geometry.userData.originalPositions;
-        const phases = this.particles.geometry.attributes.phase.array;
-        
-        const avgAmplitude = dataArray.reduce((a, b) => a + b) / dataArray.length / 255;
-        
-        for (let i = 0; i < this.config.particleCount; i++) {
-            const i3 = i * 3;
-            const x = originalPositions[i3];
-            const y = originalPositions[i3 + 1];
-            const z = originalPositions[i3 + 2];
-            
-            const dataIdx = Math.floor((i / this.config.particleCount) * dataArray.length);
-            const amplitude = dataArray[dataIdx] / 255;
-            
-            const flow = Math.sin(this.time + phases[i]) * 0.1 * amplitude;
-            const drift = Math.cos(this.time * 0.3 + phases[i] * 2) * 0.05 * amplitude;
-            
-            positions[i3] = x + drift;
-            positions[i3 + 1] = y + flow;
-            positions[i3 + 2] = z;
-        }
-        
-        this.particles.geometry.attributes.position.needsUpdate = true;
-        
-        if (this.particles.material.uniforms) {
-            this.particles.material.uniforms.time.value = this.time;
-        }
-    }
-    
-    dispose() {
-        if (this.particles) {
-            this.particles.geometry.dispose();
-            this.particles.material.dispose();
-            this.scene.remove(this.particles);
-        }
-    }
-}
-
+// Initialize app
 const app = new AudioVisualizer();
