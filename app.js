@@ -11,6 +11,7 @@ class AudioVisualizer {
         this.isRecording = false;
         this.mediaRecorder = null;
         this.recordedChunks = [];
+        this.canvasStream = null;
         
         this.scene = null;
         this.camera = null;
@@ -364,19 +365,35 @@ class AudioVisualizer {
         
         this.recordedChunks = [];
         
-        const canvasStream = this.canvas.captureStream(30);
+        // Capturar a 60fps para movimientos suaves
+        this.canvasStream = this.canvas.captureStream(60);
         const audioDestination = this.audioContext.createMediaStreamDestination();
         this.audioSource.connect(audioDestination);
         
         const combinedStream = new MediaStream([
-            ...canvasStream.getVideoTracks(),
+            ...this.canvasStream.getVideoTracks(),
             ...audioDestination.stream.getAudioTracks()
         ]);
         
-        this.mediaRecorder = new MediaRecorder(combinedStream, {
-            mimeType: 'video/webm;codecs=vp9,opus',
-            videoBitsPerSecond: 8000000
-        });
+        // Intentar primero VP9 con alta calidad, si falla usar VP8
+        let options;
+        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+            options = {
+                mimeType: 'video/webm;codecs=vp9,opus',
+                videoBitsPerSecond: 8000000  // 8 Mbps para mejor calidad
+            };
+        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+            options = {
+                mimeType: 'video/webm;codecs=vp8,opus',
+                videoBitsPerSecond: 8000000
+            };
+        } else {
+            options = {
+                videoBitsPerSecond: 8000000
+            };
+        }
+        
+        this.mediaRecorder = new MediaRecorder(combinedStream, options);
         
         this.mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) {
@@ -386,9 +403,15 @@ class AudioVisualizer {
         
         this.mediaRecorder.onstop = () => {
             this.saveRecording();
+            if (this.canvasStream) {
+                this.canvasStream.getTracks().forEach(track => track.stop());
+                this.canvasStream = null;
+            }
         };
         
-        this.mediaRecorder.start();
+        // Timeslice de 100ms para capturar más matices
+        // (no afecta fps, solo cómo se guardan los chunks)
+        this.mediaRecorder.start(100);
         this.isRecording = true;
         
         document.getElementById('recordBtn').classList.add('recording');
@@ -398,7 +421,7 @@ class AudioVisualizer {
             this.togglePlayPause();
         }
         
-        this.showStatus('Grabación iniciada', 'success');
+        this.showStatus('Grabación iniciada - Alta calidad', 'success');
     }
     
     stopRecording() {
@@ -410,7 +433,7 @@ class AudioVisualizer {
         document.getElementById('recordBtn').classList.remove('recording');
         document.getElementById('recordBtn').querySelector('.text').textContent = 'Grabar Video';
         
-        this.showStatus('Guardando video...', 'success');
+        this.showStatus('Procesando video...', 'success');
     }
     
     saveRecording() {
@@ -422,9 +445,12 @@ class AudioVisualizer {
         a.download = 'waveform_' + Date.now() + '.webm';
         a.click();
         
-        URL.revokeObjectURL(url);
+        // Limpiar después de un momento
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 100);
         
-        this.showStatus('Video guardado', 'success');
+        this.showStatus('Video guardado correctamente', 'success');
     }
     
     formatTime(seconds) {
