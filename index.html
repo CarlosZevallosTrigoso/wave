@@ -8,7 +8,6 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar izquierdo -->
         <aside class="sidebar">
             <header class="sidebar-header">
                 <h1>Audio Waveform</h1>
@@ -18,8 +17,21 @@
             <div class="control-section">
                 <h3>MEDIO</h3>
                 <div class="file-input-wrapper">
-                    <input type="file" id="audioFile" accept="audio/mp3,audio/mpeg">
-                    <label for="audioFile" class="btn-primary">Cargar MP3</label>
+                    <input type="file" id="audioFile" accept="audio/*">
+                    <label for="audioFile" class="btn-primary">Cargar Audio</label>
+                </div>
+                <p class="hint-text">O arrastra un archivo aquí</p>
+            </div>
+
+            <div class="control-section">
+                <h3>FONDO</h3>
+                <div class="file-input-wrapper">
+                    <input type="file" id="bgFile" accept="image/*">
+                    <label for="bgFile" class="btn-secondary">Cargar Imagen Fondo</label>
+                </div>
+                <div class="range-wrapper" style="margin-top: 10px;">
+                    <label>Opacidad Fondo</label>
+                    <input type="range" id="bgOpacity" min="0" max="1" step="0.05" value="0.5">
                 </div>
             </div>
 
@@ -75,21 +87,19 @@
                 </button>
             </div>
 
-            <div class="status" id="status">Carga un archivo MP3 para comenzar</div>
+            <div class="status" id="status">Carga o arrastra un MP3</div>
         </aside>
 
-        <!-- Canvas derecho -->
         <main class="canvas-area">
             <div class="canvas-wrapper">
+                <div id="bg-layer"></div>
                 <canvas id="visualizer"></canvas>
             </div>
         </main>
     </div>
 
-    <!-- Three.js and dependencies -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
-    <!-- Post-processing dependencies (order matters!) -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/Pass.js"></script>
