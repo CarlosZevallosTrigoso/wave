@@ -367,14 +367,13 @@ select:focus {
 .status.error { color: #f44336; }
 .status.success { color: #4caf50; }
 
-/* Canvas area */
+/* Canvas area - CORRECCIÓN: Fondo inicial debe coincidir con backgroundColor por defecto */
 .canvas-area {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    /* CORRECCIÓN: Fondo más claro para diferenciar del body */
-    background: #333; 
+    background: #1a1a1a; /* Fondo inicial por defecto, se actualiza con backgroundColor */
     padding: 40px;
     height: 100vh;
     overflow: hidden;
@@ -385,7 +384,6 @@ select:focus {
     display: flex;
     align-items: center;
     justify-content: center;
-    /* CORRECCIÓN: width/height 100% es crucial para que el canvas se adapte */
     width: 100%;
     height: 100%;
     position: relative;
@@ -396,7 +394,7 @@ select:focus {
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%); /* Centrado perfecto */
+    transform: translate(-50%, -50%);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;

@@ -27,6 +27,11 @@ class AudioVisualizer {
         this.exportWidth = 1080;
         this.exportHeight = 1080;
         
+        // Control de frame rate para optimizar recursos
+        this.fps = 30;
+        this.frameInterval = 1000 / this.fps;
+        this.lastFrameTime = 0;
+        
         this.init();
         this.setupEventListeners();
     }
@@ -68,7 +73,6 @@ class AudioVisualizer {
         this.canvas.style.width = displayWidth + 'px';
         this.canvas.style.height = displayHeight + 'px';
         
-        // Ajustar capa de fondo
         bgLayer.style.width = displayWidth + 'px';
         bgLayer.style.height = displayHeight + 'px';
         
@@ -91,10 +95,10 @@ class AudioVisualizer {
             canvas: this.canvas,
             antialias: true,
             preserveDrawingBuffer: true,
-            alpha: true // Transparencia activada
+            alpha: true
         });
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.setClearColor(0x000000, 0); // Render transparente
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limitar pixel ratio
+        this.renderer.setClearColor(0x000000, 0);
     }
     
     setupPostProcessing() {
@@ -113,10 +117,8 @@ class AudioVisualizer {
     }
     
     setupEventListeners() {
-        // Audio Upload
         document.getElementById('audioFile').addEventListener('change', (e) => this.loadAudio(e));
         
-        // Drag and Drop
         const dropZone = document.querySelector('.app-container');
         
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -144,7 +146,6 @@ class AudioVisualizer {
             }
         });
 
-        // Fondo Imagen
         document.getElementById('bgFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
@@ -153,12 +154,10 @@ class AudioVisualizer {
             }
         });
 
-        // Opacidad Fondo
         document.getElementById('bgOpacity').addEventListener('input', (e) => {
             document.getElementById('bg-layer').style.opacity = e.target.value;
         });
 
-        // Controles generales
         document.getElementById('formatSelect').addEventListener('change', (e) => this.changeFormat(e.target.value));
         document.getElementById('waveformType').addEventListener('change', (e) => this.changeWaveform(e.target.value));
         document.getElementById('playPauseBtn').addEventListener('click', () => this.togglePlayPause());
@@ -296,9 +295,9 @@ class AudioVisualizer {
         
         if (!this.currentWaveform || !this.currentWaveform.config) return;
         
-        // Aplicar color de fondo inicial si existe
+        // Aplicar color de fondo inicial SOLO al contenedor CSS
         if(this.currentWaveform.config.backgroundColor) {
-             document.querySelector('.canvas-area').style.backgroundColor = this.currentWaveform.config.backgroundColor;
+            document.querySelector('.canvas-area').style.backgroundColor = this.currentWaveform.config.backgroundColor;
         }
 
         Object.entries(this.currentWaveform.config).forEach(([key, value]) => {
@@ -326,7 +325,7 @@ class AudioVisualizer {
                 item.appendChild(input);
             }
             else if (typeof value === 'string' && value.startsWith('#')) {
-                // Lógica especial para colores
+                // Solo mostrar colores de waveform cuando no use custom colors
                 if ((key === 'color1' || key === 'color2') && 
                     this.currentWaveform.config.useCustomColors === false) {
                     return;
@@ -340,11 +339,11 @@ class AudioVisualizer {
                 input.addEventListener('input', (e) => {
                     this.currentWaveform.config[key] = e.target.value;
                     
-                    // IMPORTANTE: Si es Background Color, actualizamos CSS
+                    // CORRECCIÓN: backgroundColor solo afecta al contenedor CSS
                     if (key === 'backgroundColor') {
-                         document.querySelector('.canvas-area').style.backgroundColor = e.target.value;
+                        document.querySelector('.canvas-area').style.backgroundColor = e.target.value;
                     } else {
-                        // Si es otro color, actualizamos Three.js
+                        // Otros colores actualizan las geometrías Three.js
                         if (this.currentWaveform.updateColors) {
                             this.currentWaveform.updateColors();
                         }
@@ -357,7 +356,7 @@ class AudioVisualizer {
                 const input = document.createElement('input');
                 input.type = 'range';
                 input.min = key === 'particleCount' ? 1000 : 
-                            key === 'waveCount' ? 3 :
+                            key === 'waveCount' ? 1 :  // CORRECCIÓN: min = 1
                             key === 'barCount' ? 16 :
                             key === 'objectScale' ? 0.1 :
                             key === 'circleRadius' ? 0.1 :
@@ -445,9 +444,15 @@ class AudioVisualizer {
         return { bass, treble, avg };
     }
     
-    animate() {
+    animate(currentTime = 0) {
         if (!this.isPlaying) return;
-        requestAnimationFrame(() => this.animate());
+        requestAnimationFrame((time) => this.animate(time));
+        
+        // Control de frame rate para optimizar recursos durante grabación
+        const elapsed = currentTime - this.lastFrameTime;
+        if (elapsed < this.frameInterval) return;
+        this.lastFrameTime = currentTime - (elapsed % this.frameInterval);
+        
         this.analyser.getByteFrequencyData(this.dataArray);
         const bands = this.getFrequencyBands(this.dataArray);
         if (this.currentWaveform) {
@@ -467,8 +472,12 @@ class AudioVisualizer {
     
     startRecording() {
         if (!this.canvas || !this.audioElement) return;
+        
         this.recordedChunks = [];
-        this.canvasStream = this.canvas.captureStream(60);
+        
+        // OPTIMIZACIÓN: Captura a 30fps en lugar de 60
+        this.canvasStream = this.canvas.captureStream(30);
+        
         const audioDestination = this.audioContext.createMediaStreamDestination();
         this.audioSource.connect(audioDestination);
         
@@ -477,45 +486,71 @@ class AudioVisualizer {
             ...audioDestination.stream.getAudioTracks()
         ]);
         
-        let options = { videoBitsPerSecond: 6000000 };
+        // OPTIMIZACIÓN: Bitrate más conservador
+        let options = { videoBitsPerSecond: 4000000 };
         if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
             options.mimeType = 'video/webm;codecs=vp8,opus';
         }
         
         this.mediaRecorder = new MediaRecorder(combinedStream, options);
         this.chunkCount = 0;
+        
         this.mediaRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
                 this.recordedChunks.push(event.data);
                 this.chunkCount++;
+                console.log('Chunk guardado:', this.chunkCount, 'Tamaño:', (event.data.size / 1024).toFixed(2), 'KB');
             }
         };
+        
         this.mediaRecorder.onstop = () => {
-            this.saveRecording();
-            if (this.canvasStream) {
-                this.canvasStream.getTracks().forEach(track => track.stop());
-                this.canvasStream = null;
-            }
+            console.log('Grabación detenida. Total chunks:', this.chunkCount);
+            // CORRECCIÓN: Esperar un momento antes de procesar para asegurar que todos los chunks están
+            setTimeout(() => {
+                this.saveRecording();
+                if (this.canvasStream) {
+                    this.canvasStream.getTracks().forEach(track => track.stop());
+                    this.canvasStream = null;
+                }
+            }, 500);
         };
-        this.mediaRecorder.start(1000);
+        
+        // CORRECCIÓN: Chunks más frecuentes (cada 100ms) para evitar pérdida de datos
+        this.mediaRecorder.start(100);
         this.isRecording = true;
         document.getElementById('recordBtn').classList.add('recording');
         document.getElementById('recordBtn').querySelector('.text').textContent = 'Grabando...';
+        
         if (!this.isPlaying) this.togglePlayPause();
+        
         this.showStatus('Grabación iniciada', 'success');
     }
     
     stopRecording() {
         if (!this.mediaRecorder || !this.isRecording) return;
-        this.mediaRecorder.stop();
+        
         this.isRecording = false;
         document.getElementById('recordBtn').classList.remove('recording');
         document.getElementById('recordBtn').querySelector('.text').textContent = 'Grabar Video';
+        
+        // CORRECCIÓN: Detener después de un pequeño delay
+        setTimeout(() => {
+            if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                this.mediaRecorder.stop();
+            }
+        }, 100);
+        
         this.showStatus('Procesando video...', 'success');
     }
     
     saveRecording() {
-        if (this.recordedChunks.length === 0) return;
+        if (this.recordedChunks.length === 0) {
+            this.showStatus('Error: No hay datos de video', 'error');
+            return;
+        }
+        
+        console.log('Guardando', this.recordedChunks.length, 'chunks');
+        
         const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
         const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
         const url = URL.createObjectURL(blob);
@@ -523,8 +558,13 @@ class AudioVisualizer {
         a.href = url;
         a.download = 'waveform_' + Date.now() + '.webm';
         a.click();
-        setTimeout(() => { URL.revokeObjectURL(url); }, 100);
-        this.showStatus('Video guardado: ' + sizeMB + ' MB', 'success');
+        
+        setTimeout(() => { 
+            URL.revokeObjectURL(url); 
+            this.recordedChunks = []; // Limpiar memoria
+        }, 1000);
+        
+        this.showStatus('Video guardado: ' + sizeMB + ' MB (' + this.chunkCount + ' chunks)', 'success');
     }
     
     formatTime(seconds) {
@@ -560,7 +600,7 @@ class ParticleMorphWaveform {
             useCustomColors: false,
             color1: '#ff0066',
             color2: '#00ffff',
-            backgroundColor: '#333333' // RESTAURADO
+            backgroundColor: '#1a1a1a'
         };
         this.create();
     }
@@ -677,35 +717,43 @@ class MultiWaveWaveform {
             spacing: 0.15,
             speed: 1.0,
             opacity: 0.8,
-            lineWidth: 3.0,
+            lineWidth: 2.0,  // NOTA: Controlará el grosor visual mediante escalado
             positionX: 0.0,
             positionY: 0.0,
             lineColor: '#ffffff',
-            backgroundColor: '#333333' // RESTAURADO
+            backgroundColor: '#1a1a1a'
         };
         this.create();
     }
     create() {
-        this.waves.forEach(wave => { wave.geometry.dispose(); wave.material.dispose(); this.scene.remove(wave); });
+        this.waves.forEach(wave => { 
+            wave.geometry.dispose(); 
+            wave.material.dispose(); 
+            this.scene.remove(wave); 
+        });
         this.waves = [];
+        
         const segments = 128;
         for (let i = 0; i < this.config.waveCount; i++) {
+            // CORRECCIÓN: Usar MeshLine para mejor control de grosor
             const geometry = new THREE.BufferGeometry();
             const positions = new Float32Array(segments * 3);
             const yPos = (i - this.config.waveCount / 2) * this.config.spacing;
+            
             for (let j = 0; j < segments; j++) {
                 positions[j * 3] = (j / (segments - 1)) * 4 - 2;
                 positions[j * 3 + 1] = yPos;
                 positions[j * 3 + 2] = 0;
             }
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
             const color = new THREE.Color(this.config.lineColor);
             const material = new THREE.LineBasicMaterial({
                 color: color,
                 transparent: true,
-                opacity: this.config.opacity,
-                linewidth: this.config.lineWidth
+                opacity: this.config.opacity
             });
+            
             const wave = new THREE.Line(geometry, material);
             wave.userData = { index: i, baseY: yPos, segments: segments };
             this.waves.push(wave);
@@ -713,27 +761,42 @@ class MultiWaveWaveform {
         }
         this.updateConfig();
     }
-    updateColors() { const color = new THREE.Color(this.config.lineColor); this.waves.forEach(wave => wave.material.color = color); }
+    
+    updateColors() { 
+        const color = new THREE.Color(this.config.lineColor); 
+        this.waves.forEach(wave => wave.material.color = color); 
+    }
+    
     updateConfig() {
-        if (this.waves.length !== this.config.waveCount) { this.create(); return; }
+        if (this.waves.length !== this.config.waveCount) { 
+            this.create(); 
+            return; 
+        }
+        
         this.waves.forEach((wave, i) => {
             const newYPos = (i - this.config.waveCount / 2) * this.config.spacing;
             wave.userData.baseY = newYPos;
             wave.material.opacity = this.config.opacity;
-            wave.material.linewidth = this.config.lineWidth;
-            wave.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
+            
+            // CORRECCIÓN: Simular grosor de línea con escala en Z
+            const lineThickness = this.config.lineWidth * 0.5;
+            wave.scale.set(this.config.objectScale, this.config.objectScale, lineThickness);
+            
             wave.position.x = this.config.positionX;
             wave.position.y = newYPos + this.config.positionY;
         });
     }
+    
     update(dataArray, bands) {
         if (!dataArray) return;
         this.time += 0.02 * this.config.speed;
         const { bass } = bands;
+        
         this.waves.forEach((wave, waveIdx) => {
             const positions = wave.geometry.attributes.position.array;
             const segments = wave.userData.segments;
             const baseY = wave.userData.baseY;
+            
             for (let i = 0; i < segments; i++) {
                 const x = (i / (segments - 1)) * 4 - 2;
                 const dataIdx = Math.floor((i / segments) * dataArray.length);
@@ -741,14 +804,23 @@ class MultiWaveWaveform {
                 const wave1 = Math.sin(x * 2 + this.time + waveIdx * 0.5) * amplitude;
                 const wave2 = Math.sin(x * 3 - this.time * 0.7 + waveIdx * 0.3) * amplitude * 0.5;
                 const displacement = (wave1 + wave2) * this.config.waveIntensity * 0.3 * (1 + bass);
-                positions[i * 3] = x; positions[i * 3 + 1] = baseY + displacement;
+                positions[i * 3] = x; 
+                positions[i * 3 + 1] = baseY + displacement;
             }
             wave.geometry.attributes.position.needsUpdate = true;
             wave.position.x = this.config.positionX;
             wave.position.y = wave.userData.baseY + this.config.positionY;
         });
     }
-    dispose() { this.waves.forEach(wave => { wave.geometry.dispose(); wave.material.dispose(); this.scene.remove(wave); }); this.waves = []; }
+    
+    dispose() { 
+        this.waves.forEach(wave => { 
+            wave.geometry.dispose(); 
+            wave.material.dispose(); 
+            this.scene.remove(wave); 
+        }); 
+        this.waves = []; 
+    }
 }
 
 class BarsMirrorWaveform {
@@ -764,7 +836,7 @@ class BarsMirrorWaveform {
             positionX: 0.0,
             positionY: 0.0,
             barColor: '#ffffff',
-            backgroundColor: '#333333' // RESTAURADO
+            backgroundColor: '#1a1a1a'
         };
         this.create();
     }
@@ -819,7 +891,7 @@ class ParticleSphereWaveform {
             positionX: 0.0,
             positionY: 0.0,
             particleColor: '#ffffff',
-            backgroundColor: '#333333' // RESTAURADO
+            backgroundColor: '#1a1a1a'
         };
         this.create();
     }
@@ -893,7 +965,7 @@ class PulseCircleWaveform {
             positionX: 0.0,
             positionY: 0.0,
             circleColor: '#ffffff',
-            backgroundColor: '#333333' // RESTAURADO
+            backgroundColor: '#1a1a1a'
         };
         this.create();
     }
