@@ -21,6 +21,17 @@ body {
     width: 100%;
     height: 100vh;
     overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+/* Estilo para Drag & Drop activo */
+.app-container.drag-active {
+    border: 4px dashed #4a9eff;
+    opacity: 0.8;
+}
+
+.app-container.drag-active .canvas-area {
+    pointer-events: none; /* Evita interferencias al soltar */
 }
 
 /* Sidebar izquierdo */
@@ -35,6 +46,7 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
     border-right: 1px solid #3a3a3a;
+    z-index: 10; /* Encima del canvas */
 }
 
 .sidebar::-webkit-scrollbar {
@@ -107,6 +119,31 @@ body {
     background: #3a8eef;
 }
 
+.btn-secondary {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    background: #4a4a4a;
+    color: white;
+    border-radius: 6px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 0.9em;
+    transition: background 0.2s;
+}
+
+.btn-secondary:hover {
+    background: #5a5a5a;
+}
+
+.hint-text {
+    font-size: 0.8em;
+    color: #666;
+    text-align: center;
+    margin-top: 8px;
+    font-style: italic;
+}
+
 /* Select */
 select {
     width: 100%;
@@ -124,6 +161,17 @@ select:hover,
 select:focus {
     border-color: #667eea;
     outline: none;
+}
+
+/* Range wrapper */
+.range-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.range-wrapper label {
+    font-size: 0.8em;
+    color: #aaa;
 }
 
 /* Checkbox */
@@ -183,15 +231,6 @@ select:focus {
     cursor: pointer;
 }
 
-.config-item input[type="range"]::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #667eea;
-    cursor: pointer;
-    border: none;
-}
-
 .config-item input[type="color"] {
     width: 100%;
     height: 40px;
@@ -209,18 +248,6 @@ select:focus {
 .config-item input[type="color"]::-webkit-color-swatch {
     border: none;
     border-radius: 4px;
-}
-
-.config-item input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-}
-
-.config-item span {
-    font-size: 0.9em;
-    color: #667eea;
-    font-weight: 600;
 }
 
 /* Playback controls */
@@ -283,20 +310,6 @@ select:focus {
     cursor: pointer;
 }
 
-#timeline::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #4a9eff;
-    cursor: pointer;
-    border: none;
-}
-
-#timeline:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
 .time-display {
     display: flex;
     justify-content: space-between;
@@ -335,12 +348,8 @@ select:focus {
 }
 
 @keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.7;
-    }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
 }
 
 /* Status */
@@ -355,13 +364,8 @@ select:focus {
     justify-content: center;
 }
 
-.status.error {
-    color: #f44336;
-}
-
-.status.success {
-    color: #4caf50;
-}
+.status.error { color: #f44336; }
+.status.success { color: #4caf50; }
 
 /* Canvas area */
 .canvas-area {
@@ -369,18 +373,34 @@ select:focus {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #5a5a5a;
+    background: #111; /* Fondo oscuro por defecto */
     padding: 40px;
     height: 100vh;
     overflow: hidden;
+    position: relative;
 }
 
 .canvas-wrapper {
     display: flex;
     align-items: center;
     justify-content: center;
+    width: auto;
+    height: auto;
+    position: relative; /* Importante para posicionar el fondo */
+}
+
+/* Capa de fondo detrás del canvas */
+#bg-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index: 0; /* Detrás del canvas */
+    opacity: 0.5; /* Valor inicial */
 }
 
 #visualizer {
@@ -390,6 +410,8 @@ select:focus {
     width: auto;
     height: auto;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    position: relative;
+    z-index: 1; /* Delante del fondo */
 }
 
 /* Responsive */
