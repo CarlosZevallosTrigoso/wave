@@ -233,6 +233,9 @@ class AudioVisualizer {
             case 'bars':
                 this.currentWaveform = new BarsWaveform(this.scene, this.analyser);
                 break;
+            case 'barsmirror':
+                this.currentWaveform = new BarsMirrorWaveform(this.scene, this.analyser);
+                break;
         }
         
         this.setupConfigUI();
@@ -303,12 +306,14 @@ class AudioVisualizer {
                             key === 'barCount' ? 16 :
                             key === 'objectScale' ? 0.3 :
                             key === 'circleRadius' ? 0.1 :
+                            key === 'positionX' || key === 'positionY' ? -3 :
                             key.includes('opacity') ? 0 : 0.1;
                 input.max = key === 'particleCount' ? 20000 : 
                             key === 'waveCount' ? 20 :
                             key === 'barCount' ? 256 :
                             key === 'objectScale' ? 3 :
                             key === 'circleRadius' ? 3 :
+                            key === 'positionX' || key === 'positionY' ? 3 :
                             key.includes('opacity') ? 1 : 5;
                 input.step = key === 'particleCount' ? 500 : 
                              key === 'waveCount' ? 1 :
@@ -530,6 +535,8 @@ class ParticleMorphWaveform {
             waveIntensity: 1.5,
             colorCycle: 0.5,
             opacity: 0.9,
+            positionX: 0.0,
+            positionY: 0.0,
             useCustomColors: false,
             color1: '#ff0066',
             color2: '#00ffff',
@@ -616,6 +623,9 @@ class ParticleMorphWaveform {
             this.particles.material.opacity = this.config.opacity;
             // Escalar el tamaño de partículas proporcionalmente
             this.particles.material.size = 0.02 * this.config.objectScale;
+            // Aplicar posición
+            this.particles.position.x = this.config.positionX;
+            this.particles.position.y = this.config.positionY;
         }
     }
     
@@ -698,6 +708,8 @@ class ParticleRingWaveform {
             outerRadius: 1.5,
             colorCycle: 0.5,
             opacity: 0.9,
+            positionX: 0.0,
+            positionY: 0.0,
             useCustomColors: false,
             color1: '#ff0066',
             color2: '#00ffff',
@@ -787,6 +799,9 @@ class ParticleRingWaveform {
             this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
             this.particles.material.opacity = this.config.opacity;
             this.particles.material.size = 0.02 * this.config.objectScale;
+            // Aplicar posición
+            this.particles.position.x = this.config.positionX;
+            this.particles.position.y = this.config.positionY;
         }
     }
     
@@ -868,6 +883,8 @@ class MultiWaveWaveform {
             speed: 1.0,
             opacity: 0.8,
             lineWidth: 3.0,
+            positionX: 0.0,
+            positionY: 0.0,
             lineColor: '#ffffff',
             backgroundColor: '#000000'
         };
@@ -942,6 +959,9 @@ class MultiWaveWaveform {
             wave.material.opacity = this.config.opacity;
             wave.material.linewidth = this.config.lineWidth;
             wave.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
+            // Aplicar posición
+            wave.position.x = this.config.positionX;
+            wave.position.y = newYPos + this.config.positionY;
         });
     }
     
@@ -973,6 +993,10 @@ class MultiWaveWaveform {
             }
             
             wave.geometry.attributes.position.needsUpdate = true;
+            
+            // Actualizar posición del grupo
+            wave.position.x = this.config.positionX;
+            wave.position.y = wave.userData.baseY + this.config.positionY;
         });
     }
     
@@ -998,6 +1022,8 @@ class BarsWaveform {
             objectScale: 1.0,
             barIntensity: 2.5,
             barSpacing: 0.01,
+            positionX: 0.0,
+            positionY: 0.0,
             barColor: '#ffffff',
             backgroundColor: '#000000'
         };
@@ -1070,7 +1096,117 @@ class BarsWaveform {
             
             const height = 0.2 + amplitude * this.config.barIntensity * 3;
             bar.scale.y = height * this.config.objectScale;
-            bar.position.y = (height * this.config.objectScale) / 2;
+            bar.position.x = bar.userData.baseX + this.config.positionX;
+            bar.position.y = (height * this.config.objectScale) / 2 + this.config.positionY;
+        });
+    }
+    
+    dispose() {
+        this.bars.forEach(bar => {
+            bar.geometry.dispose();
+            bar.material.dispose();
+            this.scene.remove(bar);
+        });
+        this.bars = [];
+    }
+}
+
+// Bars Mirror Waveform - NUEVO: Barras simétricas (arriba y abajo)
+class BarsMirrorWaveform {
+    constructor(scene, analyser) {
+        this.scene = scene;
+        this.analyser = analyser;
+        this.bars = [];
+        
+        this.config = {
+            barCount: 64,
+            objectScale: 1.0,
+            barIntensity: 2.5,
+            barSpacing: 0.01,
+            positionX: 0.0,
+            positionY: 0.0,
+            barColor: '#ffffff',
+            backgroundColor: '#000000'
+        };
+        
+        this.create();
+        this.scene.background = new THREE.Color(this.config.backgroundColor);
+    }
+    
+    create() {
+        this.bars.forEach(bar => {
+            bar.geometry.dispose();
+            bar.material.dispose();
+            this.scene.remove(bar);
+        });
+        this.bars = [];
+        
+        const barWidth = 0.06;
+        const totalWidth = this.config.barCount * (barWidth + this.config.barSpacing);
+        const startX = -totalWidth / 2;
+        
+        const color = new THREE.Color(this.config.barColor);
+        
+        for (let i = 0; i < this.config.barCount; i++) {
+            // Crear geometría que se extiende desde el centro
+            const geometry = new THREE.BoxGeometry(barWidth, 0.1, barWidth);
+            const material = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: false,
+                opacity: 1.0
+            });
+            
+            const bar = new THREE.Mesh(geometry, material);
+            bar.position.x = startX + i * (barWidth + this.config.barSpacing);
+            bar.position.y = 0; // Centro
+            bar.userData = {
+                index: i,
+                baseX: bar.position.x
+            };
+            
+            this.bars.push(bar);
+            this.scene.add(bar);
+        }
+        
+        this.updateConfig();
+    }
+    
+    updateColors() {
+        const color = new THREE.Color(this.config.barColor);
+        this.bars.forEach(bar => {
+            bar.material.color = color;
+        });
+    }
+    
+    updateConfig() {
+        if (this.bars.length !== this.config.barCount) {
+            this.create();
+            return;
+        }
+        
+        this.bars.forEach(bar => {
+            bar.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
+        });
+    }
+    
+    update(dataArray) {
+        if (!dataArray || dataArray.length === 0) return;
+        
+        this.bars.forEach((bar, i) => {
+            const dataIdx = Math.floor((i / this.config.barCount) * dataArray.length);
+            const amplitude = dataArray[dataIdx] / 255;
+            
+            // La altura total de la barra (simétrica arriba y abajo)
+            const height = 0.2 + amplitude * this.config.barIntensity * 3;
+            
+            // Escalar verticalmente desde el centro
+            bar.scale.y = height * this.config.objectScale;
+            bar.scale.x = this.config.objectScale;
+            bar.scale.z = this.config.objectScale;
+            
+            // Mantener en el centro (Y = 0 + positionY)
+            bar.position.x = bar.userData.baseX + this.config.positionX;
+            bar.position.y = this.config.positionY;
         });
     }
     
@@ -1097,6 +1233,8 @@ class ParticleSphereWaveform {
             objectScale: 1.0,
             expansionIntensity: 1.5,
             opacity: 0.9,
+            positionX: 0.0,
+            positionY: 0.0,
             particleColor: '#ffffff',
             backgroundColor: '#000000'
         };
@@ -1148,6 +1286,9 @@ class ParticleSphereWaveform {
             this.particles.material.opacity = this.config.opacity;
             // Escalar el tamaño de partículas proporcionalmente
             this.particles.material.size = 0.03 * this.config.objectScale;
+            // Aplicar posición
+            this.particles.position.x = this.config.positionX;
+            this.particles.position.y = this.config.positionY;
         }
     }
     
@@ -1206,6 +1347,8 @@ class PulseCircleWaveform {
             circleRadius: 1.0,
             objectScale: 1.0,
             pulseIntensity: 1.5,
+            positionX: 0.0,
+            positionY: 0.0,
             circleColor: '#ffffff',
             backgroundColor: '#000000'
         };
@@ -1241,6 +1384,9 @@ class PulseCircleWaveform {
     updateConfig() {
         if (this.circle) {
             this.circle.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
+            // Aplicar posición
+            this.circle.position.x = this.config.positionX;
+            this.circle.position.y = this.config.positionY;
         }
     }
     
