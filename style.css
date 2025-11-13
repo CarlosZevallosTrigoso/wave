@@ -31,7 +31,7 @@ body {
 }
 
 .app-container.drag-active .canvas-area {
-    pointer-events: none; /* Evita interferencias al soltar */
+    pointer-events: none;
 }
 
 /* Sidebar izquierdo */
@@ -46,7 +46,7 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
     border-right: 1px solid #3a3a3a;
-    z-index: 10; /* Encima del canvas */
+    z-index: 10;
 }
 
 .sidebar::-webkit-scrollbar {
@@ -373,7 +373,8 @@ select:focus {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #111; /* Fondo oscuro por defecto */
+    /* CORRECCIÓN: Fondo más claro para diferenciar del body */
+    background: #333; 
     padding: 40px;
     height: 100vh;
     overflow: hidden;
@@ -384,23 +385,23 @@ select:focus {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: auto;
-    height: auto;
-    position: relative; /* Importante para posicionar el fondo */
+    /* CORRECCIÓN: width/height 100% es crucial para que el canvas se adapte */
+    width: 100%;
+    height: 100%;
+    position: relative;
 }
 
 /* Capa de fondo detrás del canvas */
 #bg-layer {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* Centrado perfecto */
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    z-index: 0; /* Detrás del canvas */
-    opacity: 0.5; /* Valor inicial */
+    z-index: 0;
+    opacity: 0.5;
 }
 
 #visualizer {
@@ -411,7 +412,7 @@ select:focus {
     height: auto;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
     position: relative;
-    z-index: 1; /* Delante del fondo */
+    z-index: 1;
 }
 
 /* Responsive */
