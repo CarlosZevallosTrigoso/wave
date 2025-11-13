@@ -367,13 +367,13 @@ select:focus {
 .status.error { color: #f44336; }
 .status.success { color: #4caf50; }
 
-/* Canvas area - CORRECCIÓN: Fondo inicial debe coincidir con backgroundColor por defecto */
+/* Canvas area - Fondo gris claro FIJO */
 .canvas-area {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #1a1a1a; /* Fondo inicial por defecto, se actualiza con backgroundColor */
+    background: #d0d0d0; /* Gris claro FIJO */
     padding: 40px;
     height: 100vh;
     overflow: hidden;

@@ -27,9 +27,8 @@ class AudioVisualizer {
         this.exportWidth = 1080;
         this.exportHeight = 1080;
         
-        // Control de frame rate para optimizar recursos
+        // Control de frame rate
         this.fps = 30;
-        this.recordingFps = 25;  // FPS más bajo durante grabación
         this.frameInterval = 1000 / this.fps;
         this.lastFrameTime = 0;
         
@@ -96,10 +95,13 @@ class AudioVisualizer {
             canvas: this.canvas,
             antialias: true,
             preserveDrawingBuffer: true,
-            alpha: true
+            alpha: false  // Canvas OPACO
         });
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limitar pixel ratio
-        this.renderer.setClearColor(0x000000, 0);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.setClearColor(0x1a1a1a, 1);  // Fondo inicial del canvas
+        
+        // Guardar referencia para cambios dinámicos
+        this.currentCanvasColor = 0x1a1a1a;
     }
     
     setupPostProcessing() {
@@ -155,9 +157,11 @@ class AudioVisualizer {
             }
         });
 
-        // Control dedicado de color de fondo del canvas
+        // Control dedicado de color de fondo del canvas Three.js
         document.getElementById('canvasBgColor').addEventListener('input', (e) => {
-            document.querySelector('.canvas-area').style.backgroundColor = e.target.value;
+            const color = new THREE.Color(e.target.value);
+            this.currentCanvasColor = color.getHex();
+            this.renderer.setClearColor(this.currentCanvasColor, 1);
         });
 
         document.getElementById('bgOpacity').addEventListener('input', (e) => {
@@ -210,7 +214,8 @@ class AudioVisualizer {
             }
             
             this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 512;
+            this.analyser.fftSize = 2048; // Más resolución frecuencial
+            this.analyser.smoothingTimeConstant = 0.75; // Suavizado temporal
             this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
             
             if (this.audioSource) {
@@ -431,33 +436,67 @@ class AudioVisualizer {
     
     getFrequencyBands(dataArray) {
         const length = dataArray.length;
-        const bassEnd = Math.floor(length * 0.1);
-        const trebleStart = Math.floor(length * 0.7);
-
-        let bassSum = 0;
-        for(let i=0; i<bassEnd; i++) bassSum += dataArray[i];
-        const bass = bassSum / bassEnd / 255; 
-
-        let trebleSum = 0;
-        for(let i=trebleStart; i<length; i++) trebleSum += dataArray[i];
-        const treble = trebleSum / (length - trebleStart) / 255; 
         
-        const avg = dataArray.reduce((a,b) => a+b, 0) / length / 255;
+        // Bandas más precisas basadas en percepción humana
+        const subBassEnd = Math.floor(length * 0.05);    // 0-60Hz
+        const bassEnd = Math.floor(length * 0.15);       // 60-250Hz
+        const lowMidEnd = Math.floor(length * 0.3);      // 250-500Hz
+        const midEnd = Math.floor(length * 0.5);         // 500-2kHz
+        const highMidEnd = Math.floor(length * 0.75);    // 2k-6kHz
+        // treble: 6kHz+
 
-        return { bass, treble, avg };
+        // Sub-bass y Bass
+        let subBassSum = 0;
+        for(let i = 0; i < subBassEnd; i++) subBassSum += dataArray[i];
+        const subBass = subBassSum / subBassEnd / 255;
+        
+        let bassSum = 0;
+        for(let i = subBassEnd; i < bassEnd; i++) bassSum += dataArray[i];
+        const bass = bassSum / (bassEnd - subBassEnd) / 255;
+        
+        // Mids
+        let lowMidSum = 0;
+        for(let i = bassEnd; i < lowMidEnd; i++) lowMidSum += dataArray[i];
+        const lowMid = lowMidSum / (lowMidEnd - bassEnd) / 255;
+        
+        let midSum = 0;
+        for(let i = lowMidEnd; i < midEnd; i++) midSum += dataArray[i];
+        const mid = midSum / (midEnd - lowMidEnd) / 255;
+        
+        // Highs
+        let highMidSum = 0;
+        for(let i = midEnd; i < highMidEnd; i++) highMidSum += dataArray[i];
+        const highMid = highMidSum / (highMidEnd - midEnd) / 255;
+        
+        let trebleSum = 0;
+        for(let i = highMidEnd; i < length; i++) trebleSum += dataArray[i];
+        const treble = trebleSum / (length - highMidEnd) / 255;
+        
+        // Average general
+        const avg = dataArray.reduce((a, b) => a + b, 0) / length / 255;
+        
+        // Normalización dinámica con boost
+        const boost = 1.5;
+        
+        return {
+            subBass: Math.min(subBass * boost, 1),
+            bass: Math.min(bass * boost, 1),
+            lowMid: Math.min(lowMid * boost, 1),
+            mid: Math.min(mid * boost, 1),
+            highMid: Math.min(highMid * boost, 1),
+            treble: Math.min(treble * boost, 1),
+            avg: avg
+        };
     }
     
     animate(currentTime = 0) {
         if (!this.isPlaying) return;
         requestAnimationFrame((time) => this.animate(time));
         
-        // Control de frame rate - usar FPS más bajo durante grabación
-        const targetFps = this.isRecording ? this.recordingFps : this.fps;
-        const targetInterval = 1000 / targetFps;
-        
+        // Control de frame rate
         const elapsed = currentTime - this.lastFrameTime;
-        if (elapsed < targetInterval) return;
-        this.lastFrameTime = currentTime - (elapsed % targetInterval);
+        if (elapsed < this.frameInterval) return;
+        this.lastFrameTime = currentTime - (elapsed % this.frameInterval);
         
         this.analyser.getByteFrequencyData(this.dataArray);
         const bands = this.getFrequencyBands(this.dataArray);
@@ -481,67 +520,52 @@ class AudioVisualizer {
         
         this.recordedChunks = [];
         
-        // OPTIMIZACIÓN MÁXIMA: Captura a 25fps para mayor estabilidad
-        this.canvasStream = this.canvas.captureStream(25);
+        // SOLO VIDEO - Sin audio del MediaRecorder
+        this.canvasStream = this.canvas.captureStream(30);
         
-        const audioDestination = this.audioContext.createMediaStreamDestination();
-        this.audioSource.connect(audioDestination);
-        
-        const combinedStream = new MediaStream([
-            ...this.canvasStream.getVideoTracks(),
-            ...audioDestination.stream.getAudioTracks()
-        ]);
-        
-        // OPTIMIZACIÓN: Bitrate aún más conservador y forzar codec simple
+        // Bitrate más alto ya que es solo video
         let options = { 
-            videoBitsPerSecond: 2500000,  // Reducido a 2.5Mbps
-            audioBitsPerSecond: 128000
+            videoBitsPerSecond: 5000000,  // 5Mbps - mejor calidad
+            mimeType: 'video/webm;codecs=vp8'
         };
         
-        // Intentar con VP8 que es más estable
-        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-            options.mimeType = 'video/webm;codecs=vp8,opus';
-        } else if (MediaRecorder.isTypeSupported('video/webm')) {
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
             options.mimeType = 'video/webm';
         }
         
-        this.mediaRecorder = new MediaRecorder(combinedStream, options);
+        this.mediaRecorder = new MediaRecorder(this.canvasStream, options);
         this.chunkCount = 0;
         
-        // CRÍTICO: Handlers para asegurar que todos los chunks se guarden
         this.mediaRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
                 this.recordedChunks.push(event.data);
                 this.chunkCount++;
                 
-                // Log cada 10 chunks para no saturar consola
-                if (this.chunkCount % 10 === 0) {
+                if (this.chunkCount % 20 === 0) {
                     const totalSize = this.recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0);
-                    console.log(`📹 Chunks: ${this.chunkCount} | Total: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+                    console.log(`📹 ${this.chunkCount} chunks | ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
                 }
             }
         };
         
         this.mediaRecorder.onerror = (event) => {
-            console.error('❌ MediaRecorder error:', event.error);
-            this.showStatus('Error en la grabación: ' + event.error.name, 'error');
+            console.error('❌ Error:', event.error);
+            this.showStatus('Error en la grabación', 'error');
         };
         
         this.mediaRecorder.onstop = () => {
-            console.log('⏹️ Grabación detenida. Total chunks:', this.chunkCount);
+            console.log('⏹️ Total chunks:', this.chunkCount);
             
-            // CORRECCIÓN: Esperar más tiempo para asegurar que todos los chunks estén listos
             setTimeout(() => {
                 this.saveRecording();
                 if (this.canvasStream) {
                     this.canvasStream.getTracks().forEach(track => track.stop());
                     this.canvasStream = null;
                 }
-            }, 800);
+            }, 500);
         };
         
-        // CRÍTICO: Chunks cada 50ms para evitar pérdida de datos
-        this.mediaRecorder.start(50);
+        this.mediaRecorder.start(100);
         this.isRecording = true;
         
         document.getElementById('recordBtn').classList.add('recording');
@@ -549,7 +573,7 @@ class AudioVisualizer {
         
         if (!this.isPlaying) this.togglePlayPause();
         
-        this.showStatus('🔴 Grabación iniciada (modo optimizado)', 'success');
+        this.showStatus('🔴 Grabando video (sin audio)', 'success');
         console.log('🎬 Grabación iniciada:', options);
     }
     
@@ -560,13 +584,10 @@ class AudioVisualizer {
         document.getElementById('recordBtn').classList.remove('recording');
         document.getElementById('recordBtn').querySelector('.text').textContent = 'Grabar Video';
         
-        this.showStatus('⏹️ Finalizando grabación...', 'success');
+        this.showStatus('⏹️ Finalizando...', 'success');
         
-        // CRÍTICO: Solicitar últimos datos antes de detener
         if (this.mediaRecorder.state === 'recording') {
             this.mediaRecorder.requestData();
-            
-            // Esperar un poco antes de detener para asegurar el último chunk
             setTimeout(() => {
                 if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
                     this.mediaRecorder.stop();
@@ -577,8 +598,7 @@ class AudioVisualizer {
     
     saveRecording() {
         if (this.recordedChunks.length === 0) {
-            this.showStatus('❌ Error: No hay datos de video', 'error');
-            console.error('No hay chunks grabados');
+            this.showStatus('Error: Sin datos de video', 'error');
             return;
         }
         
@@ -589,7 +609,7 @@ class AudioVisualizer {
             const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
             
             if (blob.size === 0) {
-                this.showStatus('❌ Error: El video está vacío', 'error');
+                this.showStatus('Error: Video vacío', 'error');
                 return;
             }
             
@@ -601,15 +621,15 @@ class AudioVisualizer {
             
             setTimeout(() => { 
                 URL.revokeObjectURL(url); 
-                this.recordedChunks = []; // Limpiar memoria
+                this.recordedChunks = [];
             }, 1000);
             
-            this.showStatus(`✅ Video guardado: ${sizeMB} MB (${this.chunkCount} chunks)`, 'success');
-            console.log('✅ Video guardado exitosamente');
+            this.showStatus(`Video guardado: ${sizeMB} MB (solo visual)`, 'success');
+            console.log('✅ Video guardado');
             
         } catch (error) {
-            console.error('❌ Error guardando video:', error);
-            this.showStatus('❌ Error al guardar el video', 'error');
+            console.error('Error guardando:', error);
+            this.showStatus('Error al guardar', 'error');
         }
     }
     
@@ -703,6 +723,17 @@ class ParticleMorphWaveform {
     }
     updateConfig() {
         if (this.particles) {
+            // Si particleCount cambió significativamente, recrear geometría
+            const currentCount = this.particles.geometry.attributes.position.count;
+            if (Math.abs(currentCount - this.config.particleCount) > 1000) {
+                console.log(`🔄 Recreando geometría: ${currentCount} → ${this.config.particleCount}`);
+                this.particles.geometry.dispose();
+                this.particles.material.dispose();
+                this.scene.remove(this.particles);
+                this.create();
+                return;
+            }
+            
             this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
             this.particles.material.opacity = this.config.opacity;
             this.particles.material.size = 0.02 * this.config.objectScale;
@@ -712,8 +743,8 @@ class ParticleMorphWaveform {
     }
     update(dataArray, bands) {
         if (!dataArray) return;
-        const { bass, treble } = bands;
-        this.time += 0.01 * this.config.morphSpeed * (1 + treble);
+        const { subBass, bass, mid, treble } = bands;
+        this.time += 0.01 * this.config.morphSpeed * (1 + treble * 0.5);
         const positions = this.particles.geometry.attributes.position.array;
         const originalPositions = this.particles.geometry.userData.originalPositions;
         const colors = this.particles.geometry.attributes.color.array;
@@ -725,20 +756,20 @@ class ParticleMorphWaveform {
             const amplitude = dataArray[dataIdx] / 255;
             
             const angle = Math.atan2(y, x);
-            const bassKick = bass * 2.5; 
-            const wave1 = Math.sin(angle * 3 + this.time * 2) * amplitude * this.config.waveIntensity * (1 + bassKick);
-            const wave2 = Math.cos(angle * 5 - this.time * 1.5) * amplitude * this.config.waveIntensity;
+            const lowFreqKick = (subBass + bass) * 1.5; 
+            const wave1 = Math.sin(angle * 3 + this.time * 2) * amplitude * this.config.waveIntensity * (1 + lowFreqKick);
+            const wave2 = Math.cos(angle * 5 - this.time * 1.5) * amplitude * this.config.waveIntensity * (1 + mid * 0.5);
             
             const deformation = (wave1 + wave2) * 0.3;
             const distance = Math.sqrt(x * x + y * y + z * z);
-            const newDistance = distance + deformation + (bass * 0.2);
+            const newDistance = distance + deformation + (bass * 0.3);
             const scale = newDistance / distance;
             
             positions[i3] = x * scale; positions[i3 + 1] = y * scale; positions[i3 + 2] = z * scale;
             
             if (!this.config.useCustomColors) {
                 const hue = ((i / this.config.particleCount) + this.time * this.config.colorCycle * 0.1 + amplitude * 0.2) % 1;
-                const lightness = 0.5 + (treble * 0.3);
+                const lightness = 0.5 + (treble * 0.4);
                 const color = new THREE.Color().setHSL(hue, 1.0, lightness);
                 colors[i3] = color.r; colors[i3 + 1] = color.g; colors[i3 + 2] = color.b;
             }
@@ -834,7 +865,8 @@ class MultiWaveWaveform {
     update(dataArray, bands) {
         if (!dataArray) return;
         this.time += 0.02 * this.config.speed;
-        const { bass } = bands;
+        const { subBass, bass, mid, treble } = bands;
+        const lowFreq = subBass + bass;
         
         this.waves.forEach((wave, waveIdx) => {
             const positions = wave.geometry.attributes.position.array;
@@ -845,9 +877,9 @@ class MultiWaveWaveform {
                 const x = (i / (segments - 1)) * 4 - 2;
                 const dataIdx = Math.floor((i / segments) * dataArray.length);
                 const amplitude = dataArray[dataIdx] / 255;
-                const wave1 = Math.sin(x * 2 + this.time + waveIdx * 0.5) * amplitude;
-                const wave2 = Math.sin(x * 3 - this.time * 0.7 + waveIdx * 0.3) * amplitude * 0.5;
-                const displacement = (wave1 + wave2) * this.config.waveIntensity * 0.3 * (1 + bass);
+                const wave1 = Math.sin(x * 2 + this.time + waveIdx * 0.5) * amplitude * (1 + mid * 0.3);
+                const wave2 = Math.sin(x * 3 - this.time * 0.7 + waveIdx * 0.3) * amplitude * 0.5 * (1 + treble * 0.2);
+                const displacement = (wave1 + wave2) * this.config.waveIntensity * 0.3 * (1 + lowFreq);
                 positions[i * 3] = x; 
                 positions[i * 3 + 1] = baseY + displacement;
             }
@@ -965,6 +997,17 @@ class ParticleSphereWaveform {
     updateColors() { if (this.particles) this.particles.material.color = new THREE.Color(this.config.particleColor); }
     updateConfig() {
         if (this.particles) {
+            // Si particleCount cambió significativamente, recrear geometría
+            const currentCount = this.particles.geometry.attributes.position.count;
+            if (Math.abs(currentCount - this.config.particleCount) > 1000) {
+                console.log(`🔄 Recreando geometría: ${currentCount} → ${this.config.particleCount}`);
+                this.particles.geometry.dispose();
+                this.particles.material.dispose();
+                this.scene.remove(this.particles);
+                this.create();
+                return;
+            }
+            
             this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
             this.particles.material.opacity = this.config.opacity;
             this.particles.material.size = 0.03 * this.config.objectScale;
@@ -975,7 +1018,8 @@ class ParticleSphereWaveform {
     update(dataArray, bands) {
         if (!dataArray) return;
         this.time += 0.01;
-        const { bass } = bands;
+        const { subBass, bass, mid } = bands;
+        const lowFreq = (subBass + bass) * 0.8;
         const positions = this.particles.geometry.attributes.position.array;
         const originalPositions = this.particles.geometry.userData.originalPositions;
         for (let i = 0; i < this.config.particleCount; i++) {
@@ -984,7 +1028,7 @@ class ParticleSphereWaveform {
             const dataIdx = Math.floor((i / this.config.particleCount) * dataArray.length);
             const amplitude = dataArray[dataIdx] / 255;
             const distance = Math.sqrt(x * x + y * y + z * z);
-            const expansion = amplitude * this.config.expansionIntensity * 0.3 + bass * 0.4;
+            const expansion = amplitude * this.config.expansionIntensity * 0.3 * (1 + mid * 0.2) + lowFreq * 0.5;
             const newDistance = distance + expansion;
             const scale = newDistance / distance;
             positions[i3] = x * scale; positions[i3 + 1] = y * scale; positions[i3 + 2] = z * scale;
@@ -1029,8 +1073,9 @@ class PulseCircleWaveform {
     update(dataArray, bands) {
         if (!dataArray) return;
         this.time += 0.01;
-        const { bass } = bands;
-        const pulse = 1.0 + (bass * this.config.pulseIntensity * 0.8);
+        const { subBass, bass, mid } = bands;
+        const lowFreq = (subBass * 1.2 + bass) * 0.5;
+        const pulse = 1.0 + (lowFreq * this.config.pulseIntensity * 0.9) + (mid * 0.1);
         this.circle.scale.set(pulse * this.config.objectScale, pulse * this.config.objectScale, this.config.objectScale);
     }
     dispose() { if (this.circle) { this.circle.geometry.dispose(); this.circle.material.dispose(); this.scene.remove(this.circle); } }
