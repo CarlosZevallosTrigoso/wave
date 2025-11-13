@@ -996,8 +996,8 @@ class BarsWaveform {
         this.config = {
             barCount: 64,
             objectScale: 1.0,
-            barIntensity: 1.5,
-            barSpacing: 0.05,
+            barIntensity: 2.5,
+            barSpacing: 0.01,
             barColor: '#ffffff',
             backgroundColor: '#000000'
         };
@@ -1014,7 +1014,7 @@ class BarsWaveform {
         });
         this.bars = [];
         
-        const barWidth = 0.04;
+        const barWidth = 0.06;
         const totalWidth = this.config.barCount * (barWidth + this.config.barSpacing);
         const startX = -totalWidth / 2;
         
@@ -1024,8 +1024,8 @@ class BarsWaveform {
             const geometry = new THREE.BoxGeometry(barWidth, 0.1, barWidth);
             const material = new THREE.MeshBasicMaterial({
                 color: color,
-                transparent: true,
-                opacity: 0.9
+                transparent: false,
+                opacity: 1.0
             });
             
             const bar = new THREE.Mesh(geometry, material);
@@ -1068,7 +1068,7 @@ class BarsWaveform {
             const dataIdx = Math.floor((i / this.config.barCount) * dataArray.length);
             const amplitude = dataArray[dataIdx] / 255;
             
-            const height = 0.1 + amplitude * this.config.barIntensity * 2;
+            const height = 0.2 + amplitude * this.config.barIntensity * 3;
             bar.scale.y = height * this.config.objectScale;
             bar.position.y = (height * this.config.objectScale) / 2;
         });
