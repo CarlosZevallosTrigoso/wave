@@ -389,7 +389,7 @@ select:focus {
     position: relative;
 }
 
-/* Capa de fondo detrás del canvas */
+/* Capa de IMAGEN */
 #bg-layer {
     position: absolute;
     top: 50%;
@@ -400,6 +400,16 @@ select:focus {
     background-repeat: no-repeat;
     z-index: 0;
     opacity: 0.5;
+}
+
+/* NUEVO: Capa de COLOR sólido detrás de la imagen */
+#bg-color-layer {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #1a1a1a; /* Color por defecto */
+    z-index: 0; /* Mismo nivel DOM, pero al estar antes en HTML se pinta detrás */
 }
 
 #visualizer {
