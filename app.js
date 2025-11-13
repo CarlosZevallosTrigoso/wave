@@ -29,6 +29,7 @@ class AudioVisualizer {
         
         // Control de frame rate para optimizar recursos
         this.fps = 30;
+        this.recordingFps = 25;  // FPS más bajo durante grabación
         this.frameInterval = 1000 / this.fps;
         this.lastFrameTime = 0;
         
@@ -152,6 +153,11 @@ class AudioVisualizer {
                 const url = URL.createObjectURL(file);
                 document.getElementById('bg-layer').style.backgroundImage = `url(${url})`;
             }
+        });
+
+        // Control dedicado de color de fondo del canvas
+        document.getElementById('canvasBgColor').addEventListener('input', (e) => {
+            document.querySelector('.canvas-area').style.backgroundColor = e.target.value;
         });
 
         document.getElementById('bgOpacity').addEventListener('input', (e) => {
@@ -294,13 +300,10 @@ class AudioVisualizer {
         configControls.innerHTML = '';
         
         if (!this.currentWaveform || !this.currentWaveform.config) return;
-        
-        // Aplicar color de fondo inicial SOLO al contenedor CSS
-        if(this.currentWaveform.config.backgroundColor) {
-            document.querySelector('.canvas-area').style.backgroundColor = this.currentWaveform.config.backgroundColor;
-        }
 
         Object.entries(this.currentWaveform.config).forEach(([key, value]) => {
+            // CRÍTICO: Excluir backgroundColor de los controles UI
+            if (key === 'backgroundColor') return;
             const item = document.createElement('div');
             item.className = 'config-item';
             
@@ -448,10 +451,13 @@ class AudioVisualizer {
         if (!this.isPlaying) return;
         requestAnimationFrame((time) => this.animate(time));
         
-        // Control de frame rate para optimizar recursos durante grabación
+        // Control de frame rate - usar FPS más bajo durante grabación
+        const targetFps = this.isRecording ? this.recordingFps : this.fps;
+        const targetInterval = 1000 / targetFps;
+        
         const elapsed = currentTime - this.lastFrameTime;
-        if (elapsed < this.frameInterval) return;
-        this.lastFrameTime = currentTime - (elapsed % this.frameInterval);
+        if (elapsed < targetInterval) return;
+        this.lastFrameTime = currentTime - (elapsed % targetInterval);
         
         this.analyser.getByteFrequencyData(this.dataArray);
         const bands = this.getFrequencyBands(this.dataArray);
@@ -475,8 +481,8 @@ class AudioVisualizer {
         
         this.recordedChunks = [];
         
-        // OPTIMIZACIÓN: Captura a 30fps en lugar de 60
-        this.canvasStream = this.canvas.captureStream(30);
+        // OPTIMIZACIÓN MÁXIMA: Captura a 25fps para mayor estabilidad
+        this.canvasStream = this.canvas.captureStream(25);
         
         const audioDestination = this.audioContext.createMediaStreamDestination();
         this.audioSource.connect(audioDestination);
@@ -486,44 +492,65 @@ class AudioVisualizer {
             ...audioDestination.stream.getAudioTracks()
         ]);
         
-        // OPTIMIZACIÓN: Bitrate más conservador
-        let options = { videoBitsPerSecond: 4000000 };
+        // OPTIMIZACIÓN: Bitrate aún más conservador y forzar codec simple
+        let options = { 
+            videoBitsPerSecond: 2500000,  // Reducido a 2.5Mbps
+            audioBitsPerSecond: 128000
+        };
+        
+        // Intentar con VP8 que es más estable
         if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
             options.mimeType = 'video/webm;codecs=vp8,opus';
+        } else if (MediaRecorder.isTypeSupported('video/webm')) {
+            options.mimeType = 'video/webm';
         }
         
         this.mediaRecorder = new MediaRecorder(combinedStream, options);
         this.chunkCount = 0;
         
+        // CRÍTICO: Handlers para asegurar que todos los chunks se guarden
         this.mediaRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
                 this.recordedChunks.push(event.data);
                 this.chunkCount++;
-                console.log('Chunk guardado:', this.chunkCount, 'Tamaño:', (event.data.size / 1024).toFixed(2), 'KB');
+                
+                // Log cada 10 chunks para no saturar consola
+                if (this.chunkCount % 10 === 0) {
+                    const totalSize = this.recordedChunks.reduce((sum, chunk) => sum + chunk.size, 0);
+                    console.log(`📹 Chunks: ${this.chunkCount} | Total: ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+                }
             }
         };
         
+        this.mediaRecorder.onerror = (event) => {
+            console.error('❌ MediaRecorder error:', event.error);
+            this.showStatus('Error en la grabación: ' + event.error.name, 'error');
+        };
+        
         this.mediaRecorder.onstop = () => {
-            console.log('Grabación detenida. Total chunks:', this.chunkCount);
-            // CORRECCIÓN: Esperar un momento antes de procesar para asegurar que todos los chunks están
+            console.log('⏹️ Grabación detenida. Total chunks:', this.chunkCount);
+            
+            // CORRECCIÓN: Esperar más tiempo para asegurar que todos los chunks estén listos
             setTimeout(() => {
                 this.saveRecording();
                 if (this.canvasStream) {
                     this.canvasStream.getTracks().forEach(track => track.stop());
                     this.canvasStream = null;
                 }
-            }, 500);
+            }, 800);
         };
         
-        // CORRECCIÓN: Chunks más frecuentes (cada 100ms) para evitar pérdida de datos
-        this.mediaRecorder.start(100);
+        // CRÍTICO: Chunks cada 50ms para evitar pérdida de datos
+        this.mediaRecorder.start(50);
         this.isRecording = true;
+        
         document.getElementById('recordBtn').classList.add('recording');
         document.getElementById('recordBtn').querySelector('.text').textContent = 'Grabando...';
         
         if (!this.isPlaying) this.togglePlayPause();
         
-        this.showStatus('Grabación iniciada', 'success');
+        this.showStatus('🔴 Grabación iniciada (modo optimizado)', 'success');
+        console.log('🎬 Grabación iniciada:', options);
     }
     
     stopRecording() {
@@ -533,38 +560,57 @@ class AudioVisualizer {
         document.getElementById('recordBtn').classList.remove('recording');
         document.getElementById('recordBtn').querySelector('.text').textContent = 'Grabar Video';
         
-        // CORRECCIÓN: Detener después de un pequeño delay
-        setTimeout(() => {
-            if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-                this.mediaRecorder.stop();
-            }
-        }, 100);
+        this.showStatus('⏹️ Finalizando grabación...', 'success');
         
-        this.showStatus('Procesando video...', 'success');
+        // CRÍTICO: Solicitar últimos datos antes de detener
+        if (this.mediaRecorder.state === 'recording') {
+            this.mediaRecorder.requestData();
+            
+            // Esperar un poco antes de detener para asegurar el último chunk
+            setTimeout(() => {
+                if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                    this.mediaRecorder.stop();
+                }
+            }, 200);
+        }
     }
     
     saveRecording() {
         if (this.recordedChunks.length === 0) {
-            this.showStatus('Error: No hay datos de video', 'error');
+            this.showStatus('❌ Error: No hay datos de video', 'error');
+            console.error('No hay chunks grabados');
             return;
         }
         
-        console.log('Guardando', this.recordedChunks.length, 'chunks');
+        console.log('💾 Guardando', this.recordedChunks.length, 'chunks');
         
-        const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
-        const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'waveform_' + Date.now() + '.webm';
-        a.click();
-        
-        setTimeout(() => { 
-            URL.revokeObjectURL(url); 
-            this.recordedChunks = []; // Limpiar memoria
-        }, 1000);
-        
-        this.showStatus('Video guardado: ' + sizeMB + ' MB (' + this.chunkCount + ' chunks)', 'success');
+        try {
+            const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+            const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+            
+            if (blob.size === 0) {
+                this.showStatus('❌ Error: El video está vacío', 'error');
+                return;
+            }
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'waveform_' + Date.now() + '.webm';
+            a.click();
+            
+            setTimeout(() => { 
+                URL.revokeObjectURL(url); 
+                this.recordedChunks = []; // Limpiar memoria
+            }, 1000);
+            
+            this.showStatus(`✅ Video guardado: ${sizeMB} MB (${this.chunkCount} chunks)`, 'success');
+            console.log('✅ Video guardado exitosamente');
+            
+        } catch (error) {
+            console.error('❌ Error guardando video:', error);
+            this.showStatus('❌ Error al guardar el video', 'error');
+        }
     }
     
     formatTime(seconds) {
@@ -599,8 +645,7 @@ class ParticleMorphWaveform {
             positionY: 0.0,
             useCustomColors: false,
             color1: '#ff0066',
-            color2: '#00ffff',
-            backgroundColor: '#1a1a1a'
+            color2: '#00ffff'
         };
         this.create();
     }
@@ -720,8 +765,7 @@ class MultiWaveWaveform {
             lineWidth: 2.0,  // NOTA: Controlará el grosor visual mediante escalado
             positionX: 0.0,
             positionY: 0.0,
-            lineColor: '#ffffff',
-            backgroundColor: '#1a1a1a'
+            lineColor: '#ffffff'
         };
         this.create();
     }
@@ -835,8 +879,7 @@ class BarsMirrorWaveform {
             barSpacing: 0.01,
             positionX: 0.0,
             positionY: 0.0,
-            barColor: '#ffffff',
-            backgroundColor: '#1a1a1a'
+            barColor: '#ffffff'
         };
         this.create();
     }
@@ -890,8 +933,7 @@ class ParticleSphereWaveform {
             opacity: 0.9,
             positionX: 0.0,
             positionY: 0.0,
-            particleColor: '#ffffff',
-            backgroundColor: '#1a1a1a'
+            particleColor: '#ffffff'
         };
         this.create();
     }
@@ -964,8 +1006,7 @@ class PulseCircleWaveform {
             pulseIntensity: 1.5,
             positionX: 0.0,
             positionY: 0.0,
-            circleColor: '#ffffff',
-            backgroundColor: '#1a1a1a'
+            circleColor: '#ffffff'
         };
         this.create();
     }
