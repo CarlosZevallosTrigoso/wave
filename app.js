@@ -95,10 +95,10 @@ class AudioVisualizer {
             canvas: this.canvas,
             antialias: true,
             preserveDrawingBuffer: true,
-            alpha: false  // Canvas OPACO
+            alpha: true  // CORREGIDO: Cambiado a true para permitir transparencia
         });
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        this.renderer.setClearColor(0x1a1a1a, 1);  // Fondo inicial del canvas
+        this.renderer.setClearColor(0x1a1a1a, 1);  // Fondo inicial sólido (como pediste)
         
         // Guardar referencia para cambios dinámicos
         this.currentCanvasColor = 0x1a1a1a;
@@ -149,11 +149,14 @@ class AudioVisualizer {
             }
         });
 
+        // CORREGIDO: Lógica para mostrar la imagen de fondo
         document.getElementById('bgFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
                 const url = URL.createObjectURL(file);
                 document.getElementById('bg-layer').style.backgroundImage = `url(${url})`;
+                // Al cargar imagen, hacemos el canvas transparente para que se vea lo de atrás
+                this.renderer.setClearColor(0x000000, 0);
             }
         });
 
@@ -161,7 +164,10 @@ class AudioVisualizer {
         document.getElementById('canvasBgColor').addEventListener('input', (e) => {
             const color = new THREE.Color(e.target.value);
             this.currentCanvasColor = color.getHex();
+            // Si el usuario selecciona un color manualmente, volvemos a ponerlo opaco
             this.renderer.setClearColor(this.currentCanvasColor, 1);
+            // Limpiamos la imagen de fondo si seleccionan color (opcional, pero evita confusión)
+            // document.getElementById('bg-layer').style.backgroundImage = 'none';
         });
 
         document.getElementById('bgOpacity').addEventListener('input', (e) => {
