@@ -34,7 +34,7 @@
                     <label for="bgFile" class="btn-secondary">Cargar Imagen Fondo</label>
                 </div>
                 <div class="range-wrapper" style="margin-top: 10px;">
-                    <label>Opacidad Fondo</label>
+                    <label>Opacidad Imagen</label>
                     <input type="range" id="bgOpacity" min="0" max="1" step="0.05" value="0.5">
                 </div>
             </div>
@@ -99,6 +99,7 @@
 
         <main class="canvas-area">
             <div class="canvas-wrapper">
+                <div id="bg-color-layer"></div>
                 <div id="bg-layer"></div>
                 <canvas id="visualizer"></canvas>
             </div>
