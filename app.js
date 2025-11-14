@@ -27,7 +27,6 @@ class AudioVisualizer {
         this.exportWidth = 1080;
         this.exportHeight = 1080;
         
-        // Control de frame rate
         this.fps = 30;
         this.frameInterval = 1000 / this.fps;
         this.lastFrameTime = 0;
@@ -95,12 +94,11 @@ class AudioVisualizer {
             canvas: this.canvas,
             antialias: true,
             preserveDrawingBuffer: true,
-            alpha: true  // CORREGIDO: Cambiado a true para permitir transparencia
+            alpha: true
         });
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        this.renderer.setClearColor(0x1a1a1a, 1);  // Fondo inicial sólido (como pediste)
+        this.renderer.setClearColor(0x1a1a1a, 1);
         
-        // Guardar referencia para cambios dinámicos
         this.currentCanvasColor = 0x1a1a1a;
     }
     
@@ -149,25 +147,19 @@ class AudioVisualizer {
             }
         });
 
-        // CORREGIDO: Lógica para mostrar la imagen de fondo
         document.getElementById('bgFile').addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
                 const url = URL.createObjectURL(file);
                 document.getElementById('bg-layer').style.backgroundImage = `url(${url})`;
-                // Al cargar imagen, hacemos el canvas transparente para que se vea lo de atrás
                 this.renderer.setClearColor(0x000000, 0);
             }
         });
 
-        // Control dedicado de color de fondo del canvas Three.js
         document.getElementById('canvasBgColor').addEventListener('input', (e) => {
             const color = new THREE.Color(e.target.value);
             this.currentCanvasColor = color.getHex();
-            // Si el usuario selecciona un color manualmente, volvemos a ponerlo opaco
             this.renderer.setClearColor(this.currentCanvasColor, 1);
-            // Limpiamos la imagen de fondo si seleccionan color (opcional, pero evita confusión)
-            // document.getElementById('bg-layer').style.backgroundImage = 'none';
         });
 
         document.getElementById('bgOpacity').addEventListener('input', (e) => {
@@ -220,8 +212,8 @@ class AudioVisualizer {
             }
             
             this.analyser = this.audioContext.createAnalyser();
-            this.analyser.fftSize = 2048; // Más resolución frecuencial
-            this.analyser.smoothingTimeConstant = 0.75; // Suavizado temporal
+            this.analyser.fftSize = 2048;
+            this.analyser.smoothingTimeConstant = 0.75;
             this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
             
             if (this.audioSource) {
@@ -306,8 +298,14 @@ class AudioVisualizer {
             case 'meshwave':
                 this.currentWaveform = new MeshWaveWaveform(this.scene, this.analyser);
                 break;
-            case 'spiralgalaxy':
-                this.currentWaveform = new SpiralGalaxyWaveform(this.scene, this.analyser);
+            case 'pixeldiffusion':
+                this.currentWaveform = new PixelDiffusionWaveform(this.scene, this.analyser);
+                break;
+            case 'sprayparticles':
+                this.currentWaveform = new SprayParticlesWaveform(this.scene, this.analyser);
+                break;
+            case 'wavegrid':
+                this.currentWaveform = new WaveGridWaveform(this.scene, this.analyser);
                 break;
         }
         
@@ -322,7 +320,6 @@ class AudioVisualizer {
         if (!this.currentWaveform || !this.currentWaveform.config) return;
 
         Object.entries(this.currentWaveform.config).forEach(([key, value]) => {
-            // CRÍTICO: Excluir backgroundColor de los controles UI
             if (key === 'backgroundColor') return;
             const item = document.createElement('div');
             item.className = 'config-item';
@@ -348,7 +345,6 @@ class AudioVisualizer {
                 item.appendChild(input);
             }
             else if (typeof value === 'string' && value.startsWith('#')) {
-                // Solo mostrar colores de waveform cuando no use custom colors
                 if ((key === 'color1' || key === 'color2') && 
                     this.currentWaveform.config.useCustomColors === false) {
                     return;
@@ -362,11 +358,9 @@ class AudioVisualizer {
                 input.addEventListener('input', (e) => {
                     this.currentWaveform.config[key] = e.target.value;
                     
-                    // CORRECCIÓN: backgroundColor solo afecta al contenedor CSS
                     if (key === 'backgroundColor') {
                         document.querySelector('.canvas-area').style.backgroundColor = e.target.value;
                     } else {
-                        // Otros colores actualizan las geometrías Three.js
                         if (this.currentWaveform.updateColors) {
                             this.currentWaveform.updateColors();
                         }
@@ -383,7 +377,11 @@ class AudioVisualizer {
                             key === 'barCount' ? 16 :
                             key === 'ringCount' ? 3 :
                             key === 'gridSize' ? 8 :
-                            key === 'spiralTightness' ? 1 :
+                            key === 'textureResolution' ? 64 :
+                            key === 'pixelSize' ? 2 :
+                            key === 'diffusionPower' ? 0.5 :
+                            key === 'maxRadius' ? 1 :
+                            key === 'radiusPower' ? 1 :
                             key === 'objectScale' ? 0.1 :
                             key === 'circleRadius' ? 0.1 :
                             key === 'ringThickness' ? 0.01 :
@@ -394,7 +392,11 @@ class AudioVisualizer {
                             key === 'barCount' ? 256 :
                             key === 'ringCount' ? 15 :
                             key === 'gridSize' ? 64 :
-                            key === 'spiralTightness' ? 10 :
+                            key === 'textureResolution' ? 512 :
+                            key === 'pixelSize' ? 16 :
+                            key === 'diffusionPower' ? 3 :
+                            key === 'maxRadius' ? 5 :
+                            key === 'radiusPower' ? 5 :
                             key === 'objectScale' ? 3 :
                             key === 'circleRadius' ? 3 :
                             key === 'ringThickness' ? 0.3 :
@@ -405,19 +407,23 @@ class AudioVisualizer {
                              key === 'barCount' ? 8 :
                              key === 'ringCount' ? 1 :
                              key === 'gridSize' ? 4 :
-                             key === 'spiralTightness' ? 0.5 :
+                             key === 'textureResolution' ? 32 :
+                             key === 'pixelSize' ? 1 :
+                             key === 'diffusionPower' ? 0.1 :
+                             key === 'maxRadius' ? 0.2 :
+                             key === 'radiusPower' ? 0.2 :
                              key === 'objectScale' ? 0.1 :
                              key === 'circleRadius' ? 0.1 :
                              key === 'ringThickness' ? 0.01 : 0.1;
                 input.value = value;
                 
                 const valueDisplay = document.createElement('span');
-                valueDisplay.textContent = (key === 'particleCount' || key === 'waveCount' || key === 'barCount' || key === 'ringCount' || key === 'gridSize') ? value : value.toFixed(key === 'ringThickness' ? 2 : 1);
+                valueDisplay.textContent = (key === 'particleCount' || key === 'waveCount' || key === 'barCount' || key === 'ringCount' || key === 'gridSize' || key === 'textureResolution' || key === 'pixelSize') ? value : value.toFixed(key === 'ringThickness' ? 2 : 1);
                 
                 input.addEventListener('input', (e) => {
                     const val = parseFloat(e.target.value);
                     this.currentWaveform.config[key] = val;
-                    valueDisplay.textContent = (key === 'particleCount' || key === 'waveCount' || key === 'barCount' || key === 'ringCount' || key === 'gridSize') ? val : val.toFixed(key === 'ringThickness' ? 2 : 1);
+                    valueDisplay.textContent = (key === 'particleCount' || key === 'waveCount' || key === 'barCount' || key === 'ringCount' || key === 'gridSize' || key === 'textureResolution' || key === 'pixelSize') ? val : val.toFixed(key === 'ringThickness' ? 2 : 1);
                     
                     if (this.currentWaveform.updateConfig) {
                         this.currentWaveform.updateConfig();
@@ -464,15 +470,12 @@ class AudioVisualizer {
     getFrequencyBands(dataArray) {
         const length = dataArray.length;
         
-        // Bandas más precisas basadas en percepción humana
-        const subBassEnd = Math.floor(length * 0.05);    // 0-60Hz
-        const bassEnd = Math.floor(length * 0.15);       // 60-250Hz
-        const lowMidEnd = Math.floor(length * 0.3);      // 250-500Hz
-        const midEnd = Math.floor(length * 0.5);         // 500-2kHz
-        const highMidEnd = Math.floor(length * 0.75);    // 2k-6kHz
-        // treble: 6kHz+
+        const subBassEnd = Math.floor(length * 0.05);
+        const bassEnd = Math.floor(length * 0.15);
+        const lowMidEnd = Math.floor(length * 0.3);
+        const midEnd = Math.floor(length * 0.5);
+        const highMidEnd = Math.floor(length * 0.75);
 
-        // Sub-bass y Bass
         let subBassSum = 0;
         for(let i = 0; i < subBassEnd; i++) subBassSum += dataArray[i];
         const subBass = subBassSum / subBassEnd / 255;
@@ -481,7 +484,6 @@ class AudioVisualizer {
         for(let i = subBassEnd; i < bassEnd; i++) bassSum += dataArray[i];
         const bass = bassSum / (bassEnd - subBassEnd) / 255;
         
-        // Mids
         let lowMidSum = 0;
         for(let i = bassEnd; i < lowMidEnd; i++) lowMidSum += dataArray[i];
         const lowMid = lowMidSum / (lowMidEnd - bassEnd) / 255;
@@ -490,7 +492,6 @@ class AudioVisualizer {
         for(let i = lowMidEnd; i < midEnd; i++) midSum += dataArray[i];
         const mid = midSum / (midEnd - lowMidEnd) / 255;
         
-        // Highs
         let highMidSum = 0;
         for(let i = midEnd; i < highMidEnd; i++) highMidSum += dataArray[i];
         const highMid = highMidSum / (highMidEnd - midEnd) / 255;
@@ -499,10 +500,8 @@ class AudioVisualizer {
         for(let i = highMidEnd; i < length; i++) trebleSum += dataArray[i];
         const treble = trebleSum / (length - highMidEnd) / 255;
         
-        // Average general
         const avg = dataArray.reduce((a, b) => a + b, 0) / length / 255;
         
-        // Normalización dinámica con boost
         const boost = 1.5;
         
         return {
@@ -520,7 +519,6 @@ class AudioVisualizer {
         if (!this.isPlaying) return;
         requestAnimationFrame((time) => this.animate(time));
         
-        // Control de frame rate
         const elapsed = currentTime - this.lastFrameTime;
         if (elapsed < this.frameInterval) return;
         this.lastFrameTime = currentTime - (elapsed % this.frameInterval);
@@ -547,12 +545,10 @@ class AudioVisualizer {
         
         this.recordedChunks = [];
         
-        // SOLO VIDEO - Sin audio del MediaRecorder
         this.canvasStream = this.canvas.captureStream(30);
         
-        // Bitrate más alto ya que es solo video
         let options = { 
-            videoBitsPerSecond: 5000000,  // 5Mbps - mejor calidad
+            videoBitsPerSecond: 5000000,
             mimeType: 'video/webm;codecs=vp8'
         };
         
@@ -750,7 +746,6 @@ class ParticleMorphWaveform {
     }
     updateConfig() {
         if (this.particles) {
-            // Si particleCount cambió significativamente, recrear geometría
             const currentCount = this.particles.geometry.attributes.position.count;
             if (Math.abs(currentCount - this.config.particleCount) > 1000) {
                 console.log(`🔄 Recreando geometría: ${currentCount} → ${this.config.particleCount}`);
@@ -820,7 +815,7 @@ class MultiWaveWaveform {
             spacing: 0.15,
             speed: 1.0,
             opacity: 0.8,
-            lineWidth: 2.0,  // NOTA: Controlará el grosor visual mediante escalado
+            lineWidth: 2.0,
             positionX: 0.0,
             positionY: 0.0,
             lineColor: '#ffffff'
@@ -837,7 +832,6 @@ class MultiWaveWaveform {
         
         const segments = 128;
         for (let i = 0; i < this.config.waveCount; i++) {
-            // CORRECCIÓN: Usar MeshLine para mejor control de grosor
             const geometry = new THREE.BufferGeometry();
             const positions = new Float32Array(segments * 3);
             const yPos = (i - this.config.waveCount / 2) * this.config.spacing;
@@ -880,7 +874,6 @@ class MultiWaveWaveform {
             wave.userData.baseY = newYPos;
             wave.material.opacity = this.config.opacity;
             
-            // CORRECCIÓN: Simular grosor de línea con escala en Z
             const lineThickness = this.config.lineWidth * 0.5;
             wave.scale.set(this.config.objectScale, this.config.objectScale, lineThickness);
             
@@ -1024,7 +1017,6 @@ class ParticleSphereWaveform {
     updateColors() { if (this.particles) this.particles.material.color = new THREE.Color(this.config.particleColor); }
     updateConfig() {
         if (this.particles) {
-            // Si particleCount cambió significativamente, recrear geometría
             const currentCount = this.particles.geometry.attributes.position.count;
             if (Math.abs(currentCount - this.config.particleCount) > 1000) {
                 console.log(`🔄 Recreando geometría: ${currentCount} → ${this.config.particleCount}`);
@@ -1178,7 +1170,6 @@ class FrequencyRingsWaveform {
             ring.position.x = this.config.positionX;
             ring.position.y = this.config.positionY;
             
-            // Actualizar geometría si cambió ringThickness
             ring.geometry.dispose();
             ring.geometry = new THREE.TorusGeometry(radius, this.config.ringThickness, 16, 64);
         });
@@ -1191,11 +1182,9 @@ class FrequencyRingsWaveform {
         const freqArray = [subBass, bass, lowMid, mid, highMid, treble];
         
         this.rings.forEach((ring, i) => {
-            // Cada anillo reacciona a una banda diferente
             const bandIndex = Math.floor((i / this.config.ringCount) * freqArray.length);
             const intensity = freqArray[bandIndex] || 0;
             
-            // Expansión basada en frecuencia
             const expansion = 1.0 + (intensity * this.config.expansionIntensity * 0.3);
             ring.scale.set(
                 expansion * this.config.objectScale,
@@ -1203,10 +1192,8 @@ class FrequencyRingsWaveform {
                 this.config.objectScale
             );
             
-            // Rotación suave
             ring.rotation.z = this.time + (i * 0.2);
             
-            // Opacidad dinámica
             ring.material.opacity = 0.5 + (intensity * 0.5);
             
             ring.position.x = this.config.positionX;
@@ -1251,7 +1238,6 @@ class MeshWaveWaveform {
         const size = this.config.gridSize;
         const geometry = new THREE.PlaneGeometry(4, 4, size - 1, size - 1);
         
-        // Guardar posiciones originales
         const positions = geometry.attributes.position.array;
         geometry.userData.originalPositions = new Float32Array(positions);
         
@@ -1263,7 +1249,7 @@ class MeshWaveWaveform {
         });
         
         this.mesh = new THREE.Mesh(geometry, material);
-        this.mesh.rotation.x = -Math.PI / 3; // Vista en perspectiva
+        this.mesh.rotation.x = -Math.PI / 3;
         this.scene.add(this.mesh);
         this.updateConfig();
     }
@@ -1275,7 +1261,6 @@ class MeshWaveWaveform {
     updateConfig() {
         if (!this.mesh) return;
         
-        // Si cambió gridSize, recrear
         const currentSize = Math.sqrt(this.mesh.geometry.attributes.position.count);
         if (Math.abs(currentSize - this.config.gridSize) > 0.1) {
             this.create();
@@ -1302,11 +1287,9 @@ class MeshWaveWaveform {
             const x = originalPositions[i3];
             const y = originalPositions[i3 + 1];
             
-            // Mapear a índice de frecuencia
             const freqIndex = Math.floor(((x + 2) / 4) * dataArray.length);
             const amplitude = dataArray[freqIndex] / 255;
             
-            // Ondas complejas
             const wave1 = Math.sin(x * 2 + this.time) * amplitude;
             const wave2 = Math.cos(y * 2 - this.time * 0.7) * amplitude * 0.5;
             const wave3 = Math.sin((x + y) * 1.5 + this.time * 1.5) * bass;
@@ -1319,7 +1302,6 @@ class MeshWaveWaveform {
         this.mesh.geometry.attributes.position.needsUpdate = true;
         this.mesh.geometry.computeVertexNormals();
         
-        // Rotación suave en Y
         this.mesh.rotation.y = this.time * 0.2;
         
         this.mesh.position.x = this.config.positionX;
@@ -1334,161 +1316,372 @@ class MeshWaveWaveform {
     }
 }
 
-class SpiralGalaxyWaveform {
+class PixelDiffusionWaveform {
+    constructor(scene, analyser) {
+        this.scene = scene;
+        this.analyser = analyser;
+        this.plane = null;
+        this.texture = null;
+        this.canvas = null;
+        this.ctx = null;
+        this.time = 0;
+        this.config = {
+            textureResolution: 256,
+            pixelSize: 4,
+            diffusionPower: 1.5,
+            objectScale: 2.0,
+            positionX: 0.0,
+            positionY: 0.0,
+            color1: '#000000',
+            color2: '#ffffff'
+        };
+        this.create();
+    }
+    
+    create() {
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = this.config.textureResolution;
+        this.canvas.height = this.config.textureResolution;
+        this.ctx = this.canvas.getContext('2d');
+        
+        this.texture = new THREE.CanvasTexture(this.canvas);
+        this.texture.minFilter = THREE.NearestFilter;
+        this.texture.magFilter = THREE.NearestFilter;
+        
+        const geometry = new THREE.PlaneGeometry(1, 1);
+        const material = new THREE.MeshBasicMaterial({ 
+            map: this.texture,
+            side: THREE.DoubleSide
+        });
+        
+        this.plane = new THREE.Mesh(geometry, material);
+        this.scene.add(this.plane);
+        this.updateConfig();
+    }
+    
+    updateColors() {
+        // Los colores se actualizan dinámicamente en update()
+    }
+    
+    updateConfig() {
+        if (!this.plane) return;
+        
+        const needsRecreate = 
+            this.canvas.width !== this.config.textureResolution ||
+            this.canvas.height !== this.config.textureResolution;
+            
+        if (needsRecreate) {
+            this.plane.geometry.dispose();
+            this.plane.material.dispose();
+            if (this.texture) this.texture.dispose();
+            this.scene.remove(this.plane);
+            this.create();
+            return;
+        }
+        
+        this.plane.scale.set(this.config.objectScale, this.config.objectScale, 1);
+        this.plane.position.x = this.config.positionX;
+        this.plane.position.y = this.config.positionY;
+    }
+    
+    update(dataArray, bands) {
+        if (!dataArray || !this.ctx) return;
+        
+        const { bass, mid, treble, avg } = bands;
+        const numRows = this.config.textureResolution / this.config.pixelSize;
+        const numCols = this.config.textureResolution / this.config.pixelSize;
+        
+        const c1 = new THREE.Color(this.config.color1);
+        const c2 = new THREE.Color(this.config.color2);
+        
+        this.ctx.fillStyle = `rgb(${c2.r * 255}, ${c2.g * 255}, ${c2.b * 255})`;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        const audioBoost = 1 + (bass * 0.5);
+        
+        for (let row = 0; row < numRows; row++) {
+            for (let col = 0; col < numCols; col++) {
+                const normalizedY = row / (numRows - 1);
+                const dataIdx = Math.floor((col / numCols) * dataArray.length);
+                const amplitude = dataArray[dataIdx] / 255;
+                
+                const baseProbability = Math.pow(1 - normalizedY, this.config.diffusionPower);
+                const blackProbability = baseProbability * (1 + amplitude * 0.5) * audioBoost;
+                
+                if (Math.random() < blackProbability) {
+                    this.ctx.fillStyle = `rgb(${c1.r * 255}, ${c1.g * 255}, ${c1.b * 255})`;
+                    this.ctx.fillRect(
+                        col * this.config.pixelSize, 
+                        row * this.config.pixelSize, 
+                        this.config.pixelSize, 
+                        this.config.pixelSize
+                    );
+                }
+            }
+        }
+        
+        this.texture.needsUpdate = true;
+        this.plane.rotation.z = Math.sin(this.time * 0.5) * treble * 0.1;
+        this.time += 0.01;
+    }
+    
+    dispose() {
+        if (this.plane) {
+            this.plane.geometry.dispose();
+            this.plane.material.dispose();
+            this.scene.remove(this.plane);
+        }
+        if (this.texture) this.texture.dispose();
+    }
+}
+
+class SprayParticlesWaveform {
     constructor(scene, analyser) {
         this.scene = scene;
         this.analyser = analyser;
         this.particles = null;
         this.time = 0;
         this.config = {
-            particleCount: 3000,
+            particleCount: 50000,
+            maxRadius: 3.0,
+            radiusPower: 3.0,
             objectScale: 1.0,
-            spiralTightness: 2.0,
-            rotationSpeed: 1.0,
             expansionIntensity: 1.5,
-            opacity: 0.9,
+            rotationSpeed: 0.5,
+            opacity: 0.8,
             positionX: 0.0,
             positionY: 0.0,
-            useCustomColors: false,
-            color1: '#ff0066',
-            color2: '#00ffff'
+            particleColor: '#ffffff'
         };
         this.create();
     }
+    
+    createParticleTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.2, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.5)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+    
     create() {
-        if (this.particles) {
-            this.particles.geometry.dispose();
-            this.particles.material.dispose();
-            this.scene.remove(this.particles);
-        }
-        
         const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(this.config.particleCount * 3);
-        const colors = new Float32Array(this.config.particleCount * 3);
-        
-        // Crear espiral
+
         for (let i = 0; i < this.config.particleCount; i++) {
-            const t = i / this.config.particleCount;
-            const angle = t * Math.PI * 2 * this.config.spiralTightness;
-            const radius = t * 2;
-            
-            positions[i * 3] = Math.cos(angle) * radius;
-            positions[i * 3 + 1] = Math.sin(angle) * radius;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 0.2;
-            
-            const hue = t;
-            const color = new THREE.Color().setHSL(hue, 1, 0.5);
-            colors[i * 3] = color.r;
-            colors[i * 3 + 1] = color.g;
-            colors[i * 3 + 2] = color.b;
+            const i3 = i * 3;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const theta = Math.random() * 2 * Math.PI;
+            const r = Math.pow(Math.random(), this.config.radiusPower) * this.config.maxRadius;
+
+            positions[i3 + 0] = r * Math.sin(phi) * Math.cos(theta);
+            positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            positions[i3 + 2] = r * Math.cos(phi);
         }
-        
+
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         geometry.userData.originalPositions = new Float32Array(positions);
-        
+
+        const color = new THREE.Color(this.config.particleColor);
         const material = new THREE.PointsMaterial({
-            size: 0.03,
-            vertexColors: true,
+            color: color,
+            size: 0.1,
+            map: this.createParticleTexture(),
+            blending: THREE.AdditiveBlending,
             transparent: true,
             opacity: this.config.opacity,
-            blending: THREE.AdditiveBlending
+            depthWrite: false
         });
-        
+
         this.particles = new THREE.Points(geometry, material);
         this.scene.add(this.particles);
-        this.updateColors();
         this.updateConfig();
     }
+    
     updateColors() {
-        if (!this.particles) return;
-        const colors = this.particles.geometry.attributes.color.array;
-        
-        if (this.config.useCustomColors) {
-            const c1 = new THREE.Color(this.config.color1);
-            const c2 = new THREE.Color(this.config.color2);
-            for (let i = 0; i < this.config.particleCount; i++) {
-                const t = i / this.config.particleCount;
-                const color = new THREE.Color().lerpColors(c1, c2, t);
-                colors[i * 3] = color.r;
-                colors[i * 3 + 1] = color.g;
-                colors[i * 3 + 2] = color.b;
-            }
-        } else {
-            for (let i = 0; i < this.config.particleCount; i++) {
-                const t = i / this.config.particleCount;
-                const color = new THREE.Color().setHSL(t, 1, 0.5);
-                colors[i * 3] = color.r;
-                colors[i * 3 + 1] = color.g;
-                colors[i * 3 + 2] = color.b;
-            }
+        if (this.particles) {
+            this.particles.material.color = new THREE.Color(this.config.particleColor);
         }
-        this.particles.geometry.attributes.color.needsUpdate = true;
     }
+    
     updateConfig() {
         if (!this.particles) return;
         
-        // Si cambió significativamente particleCount o spiralTightness, recrear
         const currentCount = this.particles.geometry.attributes.position.count;
-        if (Math.abs(currentCount - this.config.particleCount) > 500) {
+        if (Math.abs(currentCount - this.config.particleCount) > 5000) {
+            console.log(`🔄 Recreando geometría: ${currentCount} → ${this.config.particleCount}`);
+            this.particles.geometry.dispose();
+            this.particles.material.dispose();
+            this.scene.remove(this.particles);
             this.create();
             return;
         }
         
         this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
         this.particles.material.opacity = this.config.opacity;
-        this.particles.material.size = 0.03 * this.config.objectScale;
         this.particles.position.x = this.config.positionX;
         this.particles.position.y = this.config.positionY;
     }
+    
     update(dataArray, bands) {
         if (!dataArray || !this.particles) return;
         
-        const { subBass, bass, mid, treble } = bands;
-        this.time += 0.01 * this.config.rotationSpeed * (1 + treble * 0.5);
+        const { bass, mid, treble } = bands;
+        this.time += 0.01;
         
         const positions = this.particles.geometry.attributes.position.array;
         const originalPositions = this.particles.geometry.userData.originalPositions;
-        const colors = this.particles.geometry.attributes.color.array;
         
-        // Rotación de toda la galaxia
-        this.particles.rotation.z = this.time * 0.5;
+        const expansion = 1.0 + (bass * this.config.expansionIntensity * 0.3);
         
         for (let i = 0; i < this.config.particleCount; i++) {
             const i3 = i * 3;
-            const x = originalPositions[i3];
-            const y = originalPositions[i3 + 1];
-            const z = originalPositions[i3 + 2];
-            
-            const t = i / this.config.particleCount;
-            const dataIdx = Math.floor(t * dataArray.length);
-            const amplitude = dataArray[dataIdx] / 255;
-            
-            // Expansión radial basada en audio
-            const radius = Math.sqrt(x * x + y * y);
-            const expansion = 1.0 + (amplitude * this.config.expansionIntensity * 0.2) + (bass * 0.3);
-            const angle = Math.atan2(y, x);
-            
-            positions[i3] = Math.cos(angle) * radius * expansion;
-            positions[i3 + 1] = Math.sin(angle) * radius * expansion;
-            positions[i3 + 2] = z + (mid * 0.1);
-            
-            // Actualizar brillo basado en treble
-            if (!this.config.useCustomColors) {
-                const brightness = 0.5 + (treble * 0.5);
-                const color = new THREE.Color().setHSL(t, 1, brightness);
-                colors[i3] = color.r;
-                colors[i3 + 1] = color.g;
-                colors[i3 + 2] = color.b;
-            }
+            positions[i3] = originalPositions[i3] * expansion;
+            positions[i3 + 1] = originalPositions[i3 + 1] * expansion;
+            positions[i3 + 2] = originalPositions[i3 + 2] * expansion;
         }
         
         this.particles.geometry.attributes.position.needsUpdate = true;
-        this.particles.geometry.attributes.color.needsUpdate = true;
         
+        this.particles.rotation.y += 0.0005 * this.config.rotationSpeed * (1 + mid * 0.5);
+        this.particles.rotation.x += 0.0002 * this.config.rotationSpeed * (1 + treble * 0.5);
+    }
+    
+    dispose() {
+        if (this.particles) {
+            this.particles.geometry.dispose();
+            this.particles.material.dispose();
+            this.scene.remove(this.particles);
+        }
+    }
+}
+
+class WaveGridWaveform {
+    constructor(scene, analyser) {
+        this.scene = scene;
+        this.analyser = analyser;
+        this.particles = null;
+        this.time = 0;
+        this.config = {
+            gridSize: 60,
+            spacing: 0.2,
+            amplitude: 0.8,
+            frequency: 0.5,
+            objectScale: 1.0,
+            waveSpeed: 1.5,
+            positionX: 0.0,
+            positionY: 0.0,
+            particleColor: '#ffffff'
+        };
+        this.create();
+    }
+    
+    create() {
+        const totalParticles = this.config.gridSize * this.config.gridSize;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(totalParticles * 3);
+
+        const offsetX = (this.config.gridSize - 1) * this.config.spacing / 2;
+        const offsetY = (this.config.gridSize - 1) * this.config.spacing / 2;
+
+        let index = 0;
+        for (let i = 0; i < this.config.gridSize; i++) {
+            for (let j = 0; j < this.config.gridSize; j++) {
+                const x = i * this.config.spacing - offsetX;
+                const y = j * this.config.spacing - offsetY;
+                const z = 0;
+
+                positions[index + 0] = x;
+                positions[index + 1] = y;
+                positions[index + 2] = z;
+
+                index += 3;
+            }
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.userData.originalPositions = new Float32Array(positions);
+
+        const color = new THREE.Color(this.config.particleColor);
+        const material = new THREE.PointsMaterial({
+            color: color,
+            size: 0.08
+        });
+
+        this.particles = new THREE.Points(geometry, material);
+        this.particles.rotation.x = -Math.PI / 2;
+
+        this.scene.add(this.particles);
+        this.updateConfig();
+    }
+    
+    updateColors() {
+        if (this.particles) {
+            this.particles.material.color = new THREE.Color(this.config.particleColor);
+        }
+    }
+    
+    updateConfig() {
+        if (!this.particles) return;
+        
+        const currentSize = Math.sqrt(this.particles.geometry.attributes.position.count);
+        if (Math.abs(currentSize - this.config.gridSize) > 5) {
+            console.log(`🔄 Recreando grid: ${currentSize} → ${this.config.gridSize}`);
+            this.particles.geometry.dispose();
+            this.particles.material.dispose();
+            this.scene.remove(this.particles);
+            this.create();
+            return;
+        }
+        
+        this.particles.scale.set(this.config.objectScale, this.config.objectScale, this.config.objectScale);
         this.particles.position.x = this.config.positionX;
         this.particles.position.y = this.config.positionY;
     }
+    
+    update(dataArray, bands) {
+        if (!dataArray || !this.particles) return;
+        
+        const { bass, mid, treble } = bands;
+        this.time += 0.02 * this.config.waveSpeed;
+        
+        const positions = this.particles.geometry.attributes.position.array;
+        const originalPositions = this.particles.geometry.userData.originalPositions;
+        
+        const audioBoost = 1 + (bass * 0.8) + (mid * 0.3);
+        
+        let index = 0;
+        for (let i = 0; i < this.config.gridSize; i++) {
+            for (let j = 0; j < this.config.gridSize; j++) {
+                const x = originalPositions[index];
+                const y = originalPositions[index + 1];
+                
+                const dataIdx = Math.floor(((i / this.config.gridSize) + (j / this.config.gridSize)) / 2 * dataArray.length);
+                const amplitude = dataArray[dataIdx] / 255;
+
+                const height = Math.sin((x * this.config.frequency) + this.time * 1.5) * this.config.amplitude * audioBoost + 
+                               Math.cos((y * this.config.frequency / 2) + this.time * 0.8) * this.config.amplitude * 0.5 * audioBoost +
+                               amplitude * 0.5;
+
+                positions[index + 1] = height;
+                
+                index += 3;
+            }
+        }
+
+        this.particles.geometry.attributes.position.needsUpdate = true;
+    }
+    
     dispose() {
         if (this.particles) {
             this.particles.geometry.dispose();
