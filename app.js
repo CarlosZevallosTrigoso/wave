@@ -1348,7 +1348,7 @@ class PixelDiffusionWaveform {
         this.texture.minFilter = THREE.NearestFilter;
         this.texture.magFilter = THREE.NearestFilter;
         
-        const geometry = new THREE.PlaneGeometry(1, 1);
+        const geometry = new THREE.PlaneGeometry(2, 1);
         const material = new THREE.MeshBasicMaterial({ 
             map: this.texture,
             side: THREE.DoubleSide
