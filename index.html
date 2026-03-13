@@ -42,8 +42,11 @@
             <div class="control-section">
                 <h3>FORMATO</h3>
                 <select id="formatSelect">
-                    <option value="1080x1080">Cuadrado (1080x1080)</option>
-                    <option value="1080x1350">Vertical (1080x1350)</option>
+                    <option value="1080x1080">Cuadrado 1080×1080 (Instagram)</option>
+                    <option value="1080x1350">Vertical 1080×1350 (Instagram)</option>
+                    <option value="1080x1920">Stories/Reels 1080×1920</option>
+                    <option value="1920x1080">Horizontal 1920×1080 (YouTube)</option>
+                    <option value="720x720">Cuadrado 720×720 (compacto)</option>
                 </select>
             </div>
 
@@ -92,7 +95,7 @@
                 </div>
                 <button id="recordBtn" class="btn-record" disabled>
                     <span class="icon">⏺</span>
-                    <span class="text">Grabar Video</span>
+                    <span class="text">Grabar MP4</span>
                 </button>
             </div>
 
@@ -101,15 +104,28 @@
 
         <main class="canvas-area">
             <div class="canvas-wrapper">
-                <div id="bg-color-layer"></div>
                 <div id="bg-layer"></div>
                 <canvas id="visualizer"></canvas>
             </div>
         </main>
     </div>
 
+    <!-- Overlay de conversión MP4 -->
+    <div class="conversion-overlay" id="conversionOverlay">
+        <div class="conversion-modal">
+            <div class="conversion-icon">⚙️</div>
+            <h3 id="conversionTitle">Generando MP4</h3>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="conversionProgressBar"></div>
+            </div>
+            <p class="conversion-status" id="conversionStatusText">Preparando...</p>
+            <div class="conversion-actions">
+                <button id="cancelConversionBtn" class="btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/Pass.js"></script>
