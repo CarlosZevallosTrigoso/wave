@@ -24,7 +24,6 @@ body {
     transition: all 0.3s ease;
 }
 
-/* Estilo para Drag & Drop activo */
 .app-container.drag-active {
     border: 4px dashed #4a9eff;
     opacity: 0.8;
@@ -34,7 +33,7 @@ body {
     pointer-events: none;
 }
 
-/* Sidebar izquierdo */
+/* Sidebar */
 .sidebar {
     width: 320px;
     min-width: 320px;
@@ -130,6 +129,7 @@ body {
     cursor: pointer;
     font-size: 0.9em;
     transition: background 0.2s;
+    border: none;
 }
 
 .btn-secondary:hover {
@@ -367,13 +367,13 @@ select:focus {
 .status.error { color: #f44336; }
 .status.success { color: #4caf50; }
 
-/* Canvas area - Fondo gris claro FIJO */
+/* Canvas area */
 .canvas-area {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #d0d0d0; /* Gris claro FIJO */
+    background: #d0d0d0;
     padding: 40px;
     height: 100vh;
     overflow: hidden;
@@ -389,7 +389,7 @@ select:focus {
     position: relative;
 }
 
-/* Capa de IMAGEN */
+/* Background image layer (display only) */
 #bg-layer {
     position: absolute;
     top: 50%;
@@ -402,16 +402,6 @@ select:focus {
     opacity: 0.5;
 }
 
-/* NUEVO: Capa de COLOR sólido detrás de la imagen */
-#bg-color-layer {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background-color: #1a1a1a; /* Color por defecto */
-    z-index: 0; /* Mismo nivel DOM, pero al estar antes en HTML se pinta detrás */
-}
-
 #visualizer {
     display: block;
     max-width: 100%;
@@ -421,6 +411,115 @@ select:focus {
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
     position: relative;
     z-index: 1;
+}
+
+/* ==================== */
+/* Conversion Overlay   */
+/* ==================== */
+
+.conversion-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.conversion-overlay.visible {
+    display: flex;
+}
+
+.conversion-modal {
+    background: #2a2a2a;
+    border: 1px solid #4a4a4a;
+    border-radius: 12px;
+    padding: 32px 40px;
+    text-align: center;
+    min-width: 360px;
+    max-width: 440px;
+}
+
+.conversion-icon {
+    font-size: 2.5em;
+    margin-bottom: 12px;
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.conversion-modal h3 {
+    font-size: 1.2em;
+    color: #e0e0e0;
+    margin-bottom: 20px;
+}
+
+.progress-bar-container {
+    width: 100%;
+    height: 8px;
+    background: #1a1a1a;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.conversion-status {
+    font-size: 0.85em;
+    color: #aaa;
+    margin-bottom: 20px;
+    min-height: 1.2em;
+}
+
+.conversion-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.conversion-actions .btn-secondary {
+    width: auto;
+    padding: 8px 24px;
+}
+
+/* Recording indicator on canvas */
+.recording-indicator {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8em;
+    color: #ff5722;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.recording-indicator .rec-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ff5722;
+    animation: pulse 1s infinite;
 }
 
 /* Responsive */
@@ -440,5 +539,10 @@ select:focus {
     .canvas-area {
         flex: 1;
         padding: 20px;
+    }
+    
+    .conversion-modal {
+        min-width: 280px;
+        margin: 0 20px;
     }
 }
